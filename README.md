@@ -42,9 +42,10 @@ is the canonical contract every game repo implements against.
 
 | Repo | Role |
 | --- | --- |
-| `ssh-arcadelobby` | this — router, lobby TUI, arcade compose + deploy docs |
+| `ssh-arcadelobby` | this — router, lobby TUI, arcade compose + deploy docs, fleet durability pattern |
 | `ssh-moonminer` | game: asteroid-mining extraction loop |
-| `ssh-idlefarmer` | game: idle farming (reference implementation of the stack) |
+| `ssh-farm` | game (private repo): Idle Farmer v2 — mouse, leaderboards, durable data |
+| `ssh-idlefarmer` | game: idle farming v1 (reference implementation; retired at the v2 cutover) |
 
 ## Commands
 

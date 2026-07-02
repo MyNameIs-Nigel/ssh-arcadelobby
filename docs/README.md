@@ -82,6 +82,7 @@ Phase 3:             04 (deployment + CI/CD)   05 (tests; start anytime after it
 | [03-games-registry-and-health.md](03-games-registry-and-health.md) | `games.toml` schema, hot reload, health probing |
 | [04-deployment-and-cicd.md](04-deployment-and-cicd.md) | Arcade-wide docker-compose, secrets, GitHub Actions CI/CD for router **and** the per-game workflow template |
 | [05-tests.md](05-tests.md) | Protocol/unit tests + in-process bridge integration tests |
+| [06-fleet-data-durability.md](06-fleet-data-durability.md) | **Canonical** fleet pattern: Litestream → S3 replication so player data survives instance loss |
 
 ## Conventions
 
@@ -98,3 +99,7 @@ workarounds, `go vet`/`go test` before done. Router-specific additions:
 3. **The proxy private key is the crown jewel.** Whoever holds it can
    impersonate any player to any game. It exists only as a mounted secret on
    the host; never in the image, never in git.
+4. **The instance is disposable; the S3 bucket is not.** All player data
+   follows the durability pattern in doc 06 — a game or router change that
+   would put persistent state outside its SQLite file (or the `keys/`
+   prefix) is wrong by definition.

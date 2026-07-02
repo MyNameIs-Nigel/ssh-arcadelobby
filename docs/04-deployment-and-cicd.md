@@ -84,8 +84,16 @@ secrets:
 Key properties to preserve whatever else changes: games have **no
 published ports**; proxy **private** key only in the router; proxy
 **public** key list mounted into games; per-service `stop_grace_period`
-respecting each service's flush budget; distroless non-root read-only
-containers all around.
+respecting each service's flush budget; non-root read-only containers all
+around.
+
+**Durability (see doc 06 — canonical):** every game service additionally
+sets `LITESTREAM_REPLICA_URL: s3://<bucket>/<game>/db` (+ the `keys/`
+prefix env) and its image wraps the game in Litestream (alpine base +
+entrypoint, superseding the earlier distroless note). AWS access comes
+from the **EC2 instance profile** — no credentials in this file, ever. The
+one-time bucket/IAM provisioning checklist lives in doc 06; treat it as a
+prerequisite of first deploy.
 
 ### Secrets provisioning (one-time per host)
 
@@ -172,6 +180,9 @@ changes take effect on the next `up -d`.
 - [ ] Host reboot: `restart: unless-stopped` brings the stack back; host
   keys and saves intact (volumes).
 - [ ] No game port reachable from the public internet (scan the host).
+- [ ] **Instance-loss drill** (doc 06): terminate the instance, bootstrap
+  a fresh one, `compose up -d` → every game restores from S3 with correct
+  host keys and ≤ seconds of lost play.
 
 ## Out of scope
 
