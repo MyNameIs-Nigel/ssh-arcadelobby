@@ -1,0 +1,14 @@
+# Build artifacts
+bin/
+*.exe
+
+# Runtime data — never commit keys
+var/
+ssh_host_key
+ssh_host_key.pub
+proxy_key
+proxy_key.pub
+
+# Editor noise
+.DS_Store
+Thumbs.db
