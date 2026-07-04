@@ -1,0 +1,245 @@
+package lobby
+
+import (
+	"fmt"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+)
+
+const (
+	frameW      = 80
+	frameH      = 24
+	innerW      = frameW - 2 // content columns between the │ borders
+	contentRows = frameH - 2
+
+	hostLabel   = "play.ssharcade.dev"
+	windowTitle = "SSHARCADE"
+
+	// Layout slots inside the content region (see doc 01's mock).
+	gamesTopRow   = 1  // first game name line
+	maxVisible    = 7  // game rows that fit (2 lines each)
+	identityRow   = 16
+	flashRow      = 18
+	fingerRow     = 20
+	nameColWidth  = 14
+	rowIndent     = 3
+)
+
+// View renders the 80×24 menu, centered when the terminal is larger, and
+// rebuilds the hitbox registry to match what is on screen.
+func (m Model) View() tea.View {
+	m.hits.Reset()
+
+	var body string
+	if m.width < frameW || m.height < frameH {
+		body = m.viewTooSmall()
+	} else {
+		body = m.viewFrame()
+	}
+
+	v := tea.NewView(body)
+	v.AltScreen = true
+	v.WindowTitle = windowTitle
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
+}
+
+func (m Model) viewTooSmall() string {
+	msg := fmt.Sprintf("RESIZE TERMINAL — need %d×%d, have %d×%d", frameW, frameH, m.width, m.height)
+	return lipgloss.Place(max(m.width, 1), max(m.height, 1),
+		lipgloss.Center, lipgloss.Center, styleFlash.Render(msg))
+}
+
+func (m Model) viewFrame() string {
+	ox := (m.width - frameW) / 2
+	oy := (m.height - frameH) / 2
+
+	content := make([]string, contentRows)
+	if m.aboutOpen {
+		m.fillAbout(content)
+	} else {
+		m.fillMenu(content, ox, oy)
+	}
+
+	var b strings.Builder
+	b.WriteString(strings.Repeat("\n", oy))
+	pad := strings.Repeat(" ", ox)
+
+	b.WriteString(pad + m.topBorder() + "\n")
+	for _, line := range content {
+		b.WriteString(pad + styleFrame.Render("│") + padLine(line) + styleFrame.Render("│") + "\n")
+	}
+	b.WriteString(pad + m.bottomBorder())
+	return b.String()
+}
+
+func (m Model) topBorder() string {
+	left := "┌◇ "
+	right := " ┐"
+	title := "SSHARCADE"
+	fill := frameW - lipgloss.Width(left) - len(title) - 2 - len(hostLabel) - lipgloss.Width(right)
+	return styleFrame.Render(left) + styleTitle.Render(title) + styleFrame.Render(" "+strings.Repeat("─", fill)+" ") +
+		styleHost.Render(hostLabel) + styleFrame.Render(right)
+}
+
+func (m Model) bottomBorder() string {
+	keybar := "↑↓ SELECT · ENTER PLAY · R REFRESH · ? ABOUT · Q QUIT"
+	cursor := " "
+	if m.blink {
+		cursor = "█"
+	}
+	fill := frameW - 2 - lipgloss.Width(keybar) - 2 - 1 - 1 - 2
+	return styleFrame.Render("└ ") + styleKeybar.Render(keybar) + styleFrame.Render(" "+strings.Repeat("─", fill)+" ") +
+		styleBlink.Render(cursor) + styleFrame.Render(" ┘")
+}
+
+// fillMenu writes the game list and chrome into the content rows and
+// registers a hitbox per visible game row.
+func (m Model) fillMenu(content []string, ox, oy int) {
+	first := m.scrollOffset()
+	visible := m.games[first:min(first+maxVisible, len(m.games))]
+
+	for vi, g := range visible {
+		idx := first + vi
+		selected := idx == m.cursor
+
+		cursor := "  "
+		if selected {
+			cursor = styleCursor.Render("▸ ")
+		}
+		dot := styleOffline.Render("○ ")
+		if g.Online {
+			dot = styleOnline.Render("● ")
+		}
+
+		nameStyle := styleName
+		switch {
+		case !g.Online:
+			nameStyle = styleNameOff
+		case selected:
+			nameStyle = styleNameSel
+		}
+		name := nameStyle.Render(fit(g.Name, nameColWidth))
+
+		tagline := g.Tagline
+		tagStyle := styleTagline
+		if !g.Online {
+			tagline = "OFFLINE — back soon"
+			tagStyle = styleOffline
+		}
+		tagWidth := innerW - rowIndent - 2 - 2 - nameColWidth - 1
+		nameLine := strings.Repeat(" ", rowIndent) + cursor + dot + name + " " + tagStyle.Render(fit(tagline, tagWidth))
+
+		desc := strings.Join(g.Descriptors, " · ")
+		descStyle := styleDesc
+		if !g.Online {
+			descStyle = styleOffline
+		}
+		descLine := strings.Repeat(" ", rowIndent+4) + descStyle.Render(fit(desc, innerW-rowIndent-4))
+
+		row := gamesTopRow + vi*2
+		if row+1 >= identityRow-1 {
+			break
+		}
+		content[row] = nameLine
+		content[row+1] = descLine
+
+		// Absolute cells: frame line = oy + 1 + contentRow, columns span the
+		// interior. Registered per frame, so boxes always match the render.
+		m.hits.Add(Box{
+			X: ox + 1, Y: oy + 1 + row, W: innerW, H: 2,
+			ID:   "game:" + g.ID,
+			Data: idx,
+		})
+	}
+
+	content[identityRow] = strings.Repeat(" ", rowIndent) +
+		styleIdentity.Render("Your key is your account. Same key, same saves, any game.")
+
+	if m.flash != "" {
+		f := styleFlash.Render(m.flash)
+		content[flashRow] = strings.Repeat(" ", max((innerW-lipgloss.Width(f))/2, 0)) + f
+	}
+
+	if m.fingerprint != "" {
+		fp := styleFinger.Render("key " + fit(m.fingerprint, 24))
+		content[fingerRow] = strings.Repeat(" ", max(innerW-lipgloss.Width(fp)-2, 0)) + fp
+	}
+}
+
+// scrollOffset keeps the cursor visible when more games exist than fit.
+func (m Model) scrollOffset() int {
+	if len(m.games) <= maxVisible {
+		return 0
+	}
+	first := m.cursor - maxVisible + 1
+	if first < 0 {
+		first = 0
+	}
+	if first > len(m.games)-maxVisible {
+		first = len(m.games) - maxVisible
+	}
+	return first
+}
+
+var aboutLines = []string{
+	"",
+	"ABOUT SSHARCADE",
+	"",
+	"One address, every game:  ssh " + hostLabel,
+	"",
+	"Your SSH key is your account. When you enter a game, the arcade",
+	"forwards a fingerprint of your public key over a trusted private",
+	"network — so the same key opens the same saves in every game,",
+	"whether you connect through the arcade or straight to a game.",
+	"",
+	"Your private key never leaves your machine; SSH proves who you",
+	"are without sending it anywhere.",
+	"",
+	"Pick a save: the SSH username selects a save slot, e.g.",
+	"  ssh scout@" + hostLabel,
+	"",
+	"",
+	"PRESS ANY KEY TO RETURN",
+}
+
+func (m Model) fillAbout(content []string) {
+	for i, line := range aboutLines {
+		if i >= len(content) {
+			break
+		}
+		style := styleAbout
+		if strings.HasPrefix(line, "ABOUT") || strings.HasPrefix(line, "PRESS") {
+			style = styleAboutH
+		}
+		content[i] = strings.Repeat(" ", rowIndent) + style.Render(fit(line, innerW-rowIndent))
+	}
+}
+
+// padLine pads a styled line to the interior width, truncation-safe.
+func padLine(line string) string {
+	w := lipgloss.Width(line)
+	if w > innerW {
+		// Styled truncation is not worth the complexity here: every builder
+		// above already fits its pieces. Guard anyway.
+		return line
+	}
+	return line + strings.Repeat(" ", innerW-w)
+}
+
+// fit truncates a plain string to width, ellipsizing when needed.
+func fit(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= width {
+		return s
+	}
+	if width == 1 {
+		return "…"
+	}
+	return string(r[:width-1]) + "…"
+}
