@@ -123,6 +123,12 @@ func StartFakeGame(t *testing.T, script Script) *FakeGame {
 	return f
 }
 
+// Stop closes the listener and waits for handlers (simulates deploy kill).
+func (f *FakeGame) Stop() {
+	_ = f.listener.Close()
+	f.wg.Wait()
+}
+
 // Sessions returns records for every session that reached the shell.
 func (f *FakeGame) Sessions() []*SessionRecord {
 	f.mu.Lock()

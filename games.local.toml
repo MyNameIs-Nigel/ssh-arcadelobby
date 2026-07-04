@@ -1,0 +1,18 @@
+# Local fleet registry — farm on loopback for dev-local-fleet.sh
+# Production uses games.toml with Docker DNS names.
+
+[[games]]
+id      = "idlefarm"
+name    = "IDLE FARM"
+tagline = "Crops grow while you're away."
+descriptors = ["idle", "prestige", "market"]
+addr    = "127.0.0.1:2223"
+order   = 10
+
+[[games]]
+id      = "moonminer"
+name    = "MOON MINER"
+tagline = "Drill asteroids, dodge pirates."
+descriptors = ["extraction", "4 worlds", "push-your-luck"]
+addr    = "127.0.0.1:2224"
+order   = 20
