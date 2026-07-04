@@ -90,9 +90,13 @@ func (m Model) bottomBorder() string {
 	if m.blink {
 		cursor = "█"
 	}
-	fill := frameW - 2 - lipgloss.Width(keybar) - 2 - 1 - 1 - 2
-	return styleFrame.Render("└ ") + styleKeybar.Render(keybar) + styleFrame.Render(" "+strings.Repeat("─", fill)+" ") +
-		styleBlink.Render(cursor) + styleFrame.Render(" ┘")
+	left := "└ "
+	right := " ┘"
+	// dashPad: the space before and after the ─ run inside styleFrame.
+	const dashPad = 2
+	fill := frameW - lipgloss.Width(left) - lipgloss.Width(keybar) - lipgloss.Width(right) - lipgloss.Width(cursor) - dashPad
+	return styleFrame.Render(left) + styleKeybar.Render(keybar) + styleFrame.Render(" "+strings.Repeat("─", fill)+" ") +
+		styleBlink.Render(cursor) + styleFrame.Render(right)
 }
 
 // fillMenu writes the game list and chrome into the content rows and

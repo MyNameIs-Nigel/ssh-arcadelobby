@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
 )
@@ -359,6 +360,21 @@ func TestViewCentersOnLargerTerminals(t *testing.T) {
 	box, ok := f.model.hits.At((120-80)/2+1, (40-24)/2+1+gamesTopRow)
 	if !ok || box.ID != "game:moon" {
 		t.Fatalf("hitbox not at centered coords: %+v ok=%v", box, ok)
+	}
+}
+
+func TestBorderLinesAreFrameWidth(t *testing.T) {
+	f := newFixture(t, twoGames())
+	m := f.model
+	if w := lipgloss.Width(m.topBorder()); w != frameW {
+		t.Fatalf("top border width = %d, want %d", w, frameW)
+	}
+	if w := lipgloss.Width(m.bottomBorder()); w != frameW {
+		t.Fatalf("bottom border width = %d, want %d", w, frameW)
+	}
+	m.blink = true
+	if w := lipgloss.Width(m.bottomBorder()); w != frameW {
+		t.Fatalf("bottom border width with cursor = %d, want %d", w, frameW)
 	}
 }
 
