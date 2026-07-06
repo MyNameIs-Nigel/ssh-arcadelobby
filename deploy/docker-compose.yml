@@ -1,0 +1,158 @@
+# Fleet deploy compose (docs/04-deployment-and-cicd.md's canonical shape):
+# one EC2 host, one router public on 22, every game private on the
+# ssharcade network. Deployed copy lives at /srv/ssharcade/docker-compose.yml
+# on the host (see ../deploy/README.md for the full bootstrap).
+#
+# Readiness today (2026-07):
+#   router, farm   — real images, real proxy-identity support, ready to run.
+#   moonminer      — its repo has no server implementation or published
+#                     image yet (docs/framework/README.md there tracks it);
+#                     this block is the target shape to flip on once it does.
+#   idlefarmer     — playable, but its trusted-proxy identity retrofit
+#                     (docs/02-bridge-and-identity-protocol.md) isn't done —
+#                     bridging real player identity through the router won't
+#                     work correctly until that lands. It also predates the
+#                     fleet's Litestream decision (doc 06) and has no S3
+#                     durability wiring of its own yet.
+# Both are left in so `games.toml`/compose stay one edit away from live once
+# their repos catch up, per this doc's "adding a game touches the compose
+# file and games.toml, never the router binary" goal.
+services:
+  router:
+    image: ghcr.io/mynameis-nigel/ssh-arcadelobby:latest
+    ports:
+      - "22:2222" # host 22 -> container 2222 (non-root bind)
+    environment:
+      ARCADE_LISTEN_PORT: "2222"
+      ARCADE_HOST_KEY_PATH: /var/lib/arcade/ssh_host_key
+      ARCADE_PROXY_KEY_PATH: /run/secrets/proxy_key
+      ARCADE_GAMES_PATH: /etc/arcade/games.toml
+      # Durability (doc 06): router has no SQLite, only two small key
+      # objects to back up. Leave unset for dev mode (see entrypoint.sh).
+      # ARCADE_HOST_KEY_MC_PATH: s3/<bucket>/keys/router/ssh_host_key
+      # ARCADE_PROXY_KEY_MC_PATH: s3/<bucket>/keys/router/proxy_key
+      # MC_HOST_s3: https://<access-key>:<secret-key>@s3.amazonaws.com
+      # mc has no EC2-instance-role support, so MC_HOST_s3 needs an explicit
+      # key pair scoped to the same bucket-only IAM policy as litestream's
+      # instance role (see doc 06) — litestream itself needs no keys here
+      # at all since the router doesn't use it.
+    volumes:
+      - arcade-router-data:/var/lib/arcade
+      - ./games.toml:/etc/arcade/games.toml:ro
+    secrets: [proxy_key]
+    networks: [ssharcade]
+    restart: unless-stopped
+    stop_grace_period: 15s # router holds no state; die fast
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 1.0
+
+  farm:
+    image: ghcr.io/mynameis-nigel/ssh-farm:latest
+    # NO ports: — private network only; the router is the only way in.
+    environment:
+      FARM_LISTEN_PORT: "2222"
+      FARM_HOST_KEY_PATH: /var/lib/farm/ssh_host_key
+      FARM_DB_PATH: /var/lib/farm/farm.db
+      FARM_RATE_LIMIT_PER_SECOND: "50" # router does public throttling
+      # Durability (doc 06 — canonical; leave unset for dev mode):
+      # LITESTREAM_REPLICA_URL: s3://<bucket>/farm/db
+      # LITESTREAM_S3_REGION: us-east-1
+      # FARM_HOST_KEY_MC_PATH: s3/<bucket>/keys/farm/ssh_host_key
+      # MC_HOST_s3: https://<access-key>:<secret-key>@s3.amazonaws.com
+      # AWS credentials for litestream come from the EC2 instance role —
+      # never set LITESTREAM_ACCESS_KEY_ID/SECRET in this file.
+    volumes:
+      - farm-data:/var/lib/farm
+    networks: [ssharcade]
+    restart: unless-stopped
+    stop_grace_period: 45s # must exceed the 30s save-flush budget
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 1.0
+
+  moonminer:
+    # Not yet buildable — ssh-moonminer is planning-only (stub main.go, no
+    # Dockerfile, no published image). `docker compose up moonminer` will
+    # fail to pull until that repo ships one; `docker compose config` still
+    # parses this fine. Flip on by uncommenting once real.
+    image: ghcr.io/mynameis-nigel/ssh-moonminer:latest
+    environment:
+      MOONMINER_LISTEN_PORT: "2222"
+      MOONMINER_DB_PATH: /var/lib/moonminer/moonminer.db
+      MOONMINER_HOST_KEY_PATH: /var/lib/moonminer/ssh_host_key
+      MOONMINER_PROXY_KEYS_PATH: /etc/moonminer/proxy_keys
+      MOONMINER_RATE_LIMIT_PER_SECOND: "50"
+      # Durability — same shape as farm's, once its Dockerfile adopts doc 06:
+      # LITESTREAM_REPLICA_URL: s3://<bucket>/moonminer/db
+      # LITESTREAM_S3_REGION: us-east-1
+      # MOONMINER_HOST_KEY_MC_PATH: s3/<bucket>/keys/moonminer/ssh_host_key
+      # MC_HOST_s3: https://<access-key>:<secret-key>@s3.amazonaws.com
+    volumes:
+      - moonminer-data:/var/lib/moonminer
+      - ./proxy_keys:/etc/moonminer/proxy_keys:ro # PUBLIC half(s) of proxy key
+    networks: [ssharcade]
+    restart: unless-stopped
+    stop_grace_period: 45s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 1.0
+
+  idlefarmer:
+    # Playable, but not yet safe to put behind the router for real players:
+    # it has no trusted-proxy identity support (docs/02's retrofit task),
+    # so every bridged connection would resolve to the same identity rather
+    # than each player's own key. Kept here, disconnected from proxy_keys,
+    # as the target shape; wire it for real once the retrofit lands.
+    image: ghcr.io/mynameis-nigel/ssh-idlefarmer:latest
+    environment:
+      IDLEFARM_LISTEN_PORT: "2222"
+      IDLEFARM_HOST_KEY_PATH: /var/lib/idlefarm/ssh_host_key
+      IDLEFARM_LOG_FORMAT: json
+      # No LITESTREAM_*/*_MC_PATH here: this image has no entrypoint.sh or
+      # litestream wiring of its own yet (predates doc 06's fleet decision).
+    volumes:
+      - idlefarmer-data:/var/lib/idlefarm
+    networks: [ssharcade]
+    restart: unless-stopped
+    stop_grace_period: 45s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 1.0
+
+networks:
+  ssharcade: {}
+
+volumes:
+  arcade-router-data: {}
+  farm-data: {}
+  moonminer-data: {}
+  idlefarmer-data: {}
+
+secrets:
+  proxy_key:
+    file: ./secrets/proxy_key

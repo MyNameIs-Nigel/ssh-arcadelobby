@@ -9,6 +9,12 @@ ssh_host_key.pub
 proxy_key
 proxy_key.pub
 
+# deploy/secrets/proxy_key is already covered by the bare `proxy_key` rule
+# above; proxy_keys (plural, the games' trust file) is a per-host generated
+# artifact copied from secrets/proxy_key.pub during provisioning — never
+# authored content, so it's never committed either.
+deploy/proxy_keys
+
 # Editor noise
 .DS_Store
 Thumbs.db

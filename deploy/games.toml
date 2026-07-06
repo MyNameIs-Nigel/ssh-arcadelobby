@@ -1,0 +1,40 @@
+# ssharcade games registry — production. Deployed to /etc/arcade/games.toml
+# (ARCADE_GAMES_PATH) on the host; mounted read-only into the router, and
+# hot-reloaded within one probe cycle on edit — no router redeploy needed.
+# Schema: ../docs/03-games-registry-and-health.md. Dev default: ../games.toml
+# (loopback addressing for dev-local-fleet.sh).
+#
+# moonminer and idlefarmer are listed even though neither is safely
+# deployable yet (see deploy/docker-compose.yml's readiness notes) — the
+# registry's health prober is designed for exactly this: an entry whose
+# backing container isn't up yet just shows `○ OFFLINE` in the menu rather
+# than breaking anything, so this file stays one edit away from live once
+# those repos catch up.
+
+[[games]]
+id      = "farm"
+name    = "IDLE FARMER"
+tagline = "Crops grow while you're away."
+descriptors = ["idle", "prestige", "market", "leaderboard"]
+addr    = "farm:2222"                # private-network host:port
+host_key = ""                         # optional: pinned public key (authorized_keys
+                                      # format). Empty = accept any (isolated net).
+order   = 10
+
+[[games]]
+id      = "moonminer"
+name    = "MOON MINER"
+tagline = "Drill asteroids, dodge pirates."
+descriptors = ["extraction", "4 worlds", "push-your-luck"]
+addr    = "moonminer:2222"
+host_key = ""
+order   = 20
+
+[[games]]
+id      = "idlefarmer"
+name    = "IDLE FARMER (v1)"
+tagline = "The original — crops grow while you're away."
+descriptors = ["idle", "prestige", "market", "legacy"]
+addr    = "idlefarmer:2222"
+host_key = ""
+order   = 30
