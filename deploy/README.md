@@ -69,15 +69,68 @@ required) until you provision a bucket. One-time setup (docs/06):
 
 1. Create a **versioned**, SSE-S3-encrypted, public-access-blocked S3
    bucket in the instance's own region.
-2. Attach an IAM policy to the **EC2 instance profile** granting
-   `Get/Put/List/Delete` scoped to that bucket only — litestream's AWS SDK
-   picks this up automatically; never put AWS keys in this repo, the
-   compose file, or any image.
+
+2. Attach this policy to the **EC2 instance profile** — litestream's AWS
+   SDK picks it up automatically, no keys anywhere in this repo, the
+   compose file, or any image. `ListBucket` needs the bare bucket ARN;
+   the read/write/delete actions need the `/*` form — a common IAM
+   gotcha if both end up on the same ARN.
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Sid": "ListBucketScoped",
+         "Effect": "Allow",
+         "Action": ["s3:ListBucket"],
+         "Resource": "arn:aws:s3:::<bucket-name>"
+       },
+       {
+         "Sid": "ObjectReadWriteDelete",
+         "Effect": "Allow",
+         "Action": [
+           "s3:GetObject",
+           "s3:PutObject",
+           "s3:DeleteObject",
+           "s3:AbortMultipartUpload",
+           "s3:ListMultipartUploadParts"
+         ],
+         "Resource": "arn:aws:s3:::<bucket-name>/*"
+       }
+     ]
+   }
+   ```
+
 3. `mc` (used only for the small host-key/proxy-key objects under
-   `keys/`) has no instance-role support, so it separately needs an
-   explicit access key pair, scoped to the same bucket-only policy, set via
-   `MC_HOST_s3` in each service's environment (see the commented-out block
-   in each `docker-compose.yml` service).
+   `keys/`) has no instance-role support, so it separately needs its own
+   IAM **user** (not the instance role) with a static access key/secret,
+   set via `MC_HOST_s3` in each service's environment (see the
+   commented-out block in each `docker-compose.yml` service). Scope this
+   one tighter than the instance role — `mc` only ever touches `keys/`,
+   never the per-game `db/` objects, and never deletes anything:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Sid": "ListKeysPrefixOnly",
+         "Effect": "Allow",
+         "Action": ["s3:ListBucket"],
+         "Resource": "arn:aws:s3:::<bucket-name>",
+         "Condition": { "StringLike": { "s3:prefix": "keys/*" } }
+       },
+       {
+         "Sid": "KeyObjectsReadWrite",
+         "Effect": "Allow",
+         "Action": ["s3:GetObject", "s3:PutObject"],
+         "Resource": "arn:aws:s3:::<bucket-name>/keys/*"
+       }
+     ]
+   }
+   ```
+
 4. Uncomment the `LITESTREAM_*`/`*_MC_PATH`/`MC_HOST_s3` lines for `farm`
    (and `router`, for its own `keys/router/` backup) with your real bucket
    name, then `docker compose up -d`.
