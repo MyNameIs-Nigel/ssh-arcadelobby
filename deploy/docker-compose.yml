@@ -61,6 +61,13 @@ services:
       FARM_HOST_KEY_PATH: /var/lib/farm/ssh_host_key
       FARM_DB_PATH: /var/lib/farm/farm.db
       FARM_RATE_LIMIT_PER_SECOND: "50" # router does public throttling
+      # Without this, FARM_PROXY_KEYS_PATH is empty ("direct-only dev" per
+      # internal/config), so the router's bridged connections never match
+      # isProxyKey() and fall through to resolveDirect() — every player
+      # would collapse onto ONE save slot (the router's own key), not
+      # their own identity. This is the same proxy_keys trust file the
+      # router's secrets provisioning generates (deploy/README.md).
+      FARM_PROXY_KEYS_PATH: /etc/farm/proxy_keys
       # Durability (doc 06 — canonical; leave unset for dev mode):
       # LITESTREAM_REPLICA_URL: s3://<bucket>/farm/db
       # LITESTREAM_S3_REGION: us-east-1
@@ -70,6 +77,7 @@ services:
       # never set LITESTREAM_ACCESS_KEY_ID/SECRET in this file.
     volumes:
       - farm-data:/var/lib/farm
+      - ./proxy_keys:/etc/farm/proxy_keys:ro # PUBLIC half of the router's proxy key
     networks: [ssharcade]
     restart: unless-stopped
     stop_grace_period: 45s # must exceed the 30s save-flush budget
