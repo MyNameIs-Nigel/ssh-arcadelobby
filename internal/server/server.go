@@ -1,7 +1,7 @@
 // Package server is the public half of the router: a Wish SSH server that
 // accepts anyone with a key (trust-on-first-use), shows the arcade menu,
-// and hands sessions to the bridge. It has no persistence at all; rate
-// limiting here protects the whole fleet.
+// and hands sessions to the bridge. Player prefs (alpha-warning acks) live
+// in SQLite; rate limiting here protects the whole fleet.
 package server
 
 import (
@@ -21,8 +21,10 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/time/rate"
 
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/banner"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/config"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/store"
 )
 
 // Server wraps the Wish SSH server and related middleware.
@@ -31,11 +33,13 @@ type Server struct {
 	logger   *slog.Logger
 	ssh      *ssh.Server
 	registry *registry.Registry
+	banner   *banner.Source
+	store    *store.Store
 	proxyKey gossh.Signer
 }
 
 // New constructs and configures the SSH server over the given registry.
-func New(cfg config.Config, logger *slog.Logger, reg *registry.Registry) (*Server, error) {
+func New(cfg config.Config, logger *slog.Logger, reg *registry.Registry, ban *banner.Source, st *store.Store) (*Server, error) {
 	for _, p := range []string{cfg.HostKeyPath, cfg.ProxyKeyPath} {
 		if err := ensureKeyDir(p); err != nil {
 			return nil, err
@@ -54,7 +58,7 @@ func New(cfg config.Config, logger *slog.Logger, reg *registry.Registry) (*Serve
 		cfg.RateLimitMaxEntries,
 	)
 
-	srv := &Server{cfg: cfg, logger: logger, registry: reg, proxyKey: proxyKey}
+	srv := &Server{cfg: cfg, logger: logger, registry: reg, banner: ban, store: st, proxyKey: proxyKey}
 
 	// No idle timeout at the transport: the lobby enforces its own via the
 	// UI, and during a bridged game only the game's idle rules apply.

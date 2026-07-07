@@ -15,6 +15,8 @@ type Config struct {
 	HostKeyPath         string
 	ProxyKeyPath        string
 	GamesPath           string
+	BannerPath          string
+	DBPath              string
 	LobbyIdleTimeout    time.Duration
 	ProbeInterval       time.Duration
 	MaxConnections      int
@@ -36,6 +38,8 @@ func Load() (Config, error) {
 		HostKeyPath:  envOr("ARCADE_HOST_KEY_PATH", "var/ssh_host_key"),
 		ProxyKeyPath: envOr("ARCADE_PROXY_KEY_PATH", "var/proxy_key"),
 		GamesPath:    envOr("ARCADE_GAMES_PATH", "games.toml"),
+		BannerPath:   envOr("ARCADE_BANNER_PATH", "banner.toml"),
+		DBPath:       envOr("ARCADE_DB_PATH", "var/arcade.db"),
 		LogLevel:     envOr("ARCADE_LOG_LEVEL", "info"),
 		LogFormat:    envOr("ARCADE_LOG_FORMAT", "text"),
 	}
@@ -76,6 +80,12 @@ func Load() (Config, error) {
 	}
 	if cfg.GamesPath == "" {
 		return Config{}, fmt.Errorf("ARCADE_GAMES_PATH must not be empty")
+	}
+	if cfg.BannerPath == "" {
+		return Config{}, fmt.Errorf("ARCADE_BANNER_PATH must not be empty")
+	}
+	if cfg.DBPath == "" {
+		return Config{}, fmt.Errorf("ARCADE_DB_PATH must not be empty")
 	}
 	if cfg.LobbyIdleTimeout < 0 {
 		return Config{}, fmt.Errorf("ARCADE_LOBBY_IDLE_TIMEOUT must be zero or positive")

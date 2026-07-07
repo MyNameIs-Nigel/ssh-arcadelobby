@@ -41,6 +41,7 @@ game process in its container and continuously streams WAL frames to S3:
 s3://<org>-ssharcade-data/
   farm/db/…            litestream generations per game
   moonminer/db/…
+  router/db/…          lobby SQLite (alpha-warning acks, account touch)
   keys/farm/           host keys (one-time upload, restored on boot)
   keys/moonminer/
   keys/router/         router host key + proxy key backup
@@ -99,7 +100,7 @@ s3://<org>-ssharcade-data/
 
 | Repo | Owns |
 | --- | --- |
-| this repo (`deploy/`) | bucket name/env wiring in compose, instance-profile documentation, `keys/router/` for its own host+proxy keys (router has no SQLite — keys only) |
+| this repo (`deploy/`) | bucket name/env wiring in compose, instance-profile documentation, `keys/router/` for host+proxy keys, `router/db/` Litestream replica for lobby SQLite |
 | `ssh-farm` | first game implementation: Dockerfile/entrypoint pattern, MinIO drill scripts (`framework/02`, `tests/02`) |
 | `ssh-moonminer` | adopts the same Dockerfile/entrypoint pattern (its `framework/04` references this doc) |
 

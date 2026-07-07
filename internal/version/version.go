@@ -9,7 +9,7 @@
 package version
 
 // Version is the router's current release. The router is in alpha.
-const Version = "1.0.1"
+const Version = "1.1.0"
 
 // Channel is the human-readable release channel derived from Version's
 // leading component.

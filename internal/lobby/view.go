@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/banner"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/version"
 )
@@ -21,8 +22,9 @@ const (
 	windowTitle = "SSHARCADE"
 
 	// Layout slots inside the content region (see doc 01's mock).
-	gamesTopRow   = 1  // first game name line
+	gamesTopRow   = 1  // first game name line when no banner
 	maxVisible    = 7  // game rows that fit (2 lines each)
+	bannerTopRow  = 0  // operator notice when enabled
 	identityRow   = 16
 	flashRow      = 18
 	fingerRow     = 20
@@ -60,9 +62,12 @@ func (m Model) viewFrame() string {
 	oy := (m.height - frameH) / 2
 
 	content := make([]string, contentRows)
-	if m.aboutOpen {
+	switch {
+	case m.alphaOpen:
+		m.fillAlphaWarn(content, ox, oy)
+	case m.aboutOpen:
 		m.fillAbout(content)
-	} else {
+	default:
 		m.fillMenu(content, ox, oy)
 	}
 
@@ -95,18 +100,62 @@ func (m Model) bottomBorder() string {
 	}
 	left := "└ "
 	right := " ┘"
-	// dashPad: the space before and after the ─ run inside styleFrame.
 	const dashPad = 2
 	fill := frameW - lipgloss.Width(left) - lipgloss.Width(keybar) - lipgloss.Width(right) - lipgloss.Width(cursor) - dashPad
 	return styleFrame.Render(left) + styleKeybar.Render(keybar) + styleFrame.Render(" "+strings.Repeat("─", fill)+" ") +
 		styleBlink.Render(cursor) + styleFrame.Render(right)
 }
 
+func (m Model) gamesOrigin() int {
+	if m.notice.Enabled {
+		return 2
+	}
+	return gamesTopRow
+}
+
+func (m Model) maxVisibleGames() int {
+	if m.notice.Enabled {
+		return maxVisible - 1
+	}
+	return maxVisible
+}
+
+func (m Model) fillBanner(content []string) {
+	if !m.notice.Enabled {
+		return
+	}
+	bodyStyle := styleBannerInfo
+	switch m.notice.Level {
+	case banner.LevelWarning:
+		bodyStyle = styleBannerWarn
+	case banner.LevelDanger:
+		bodyStyle = styleBannerDanger
+	}
+	if m.notice.Title != "" {
+		line := styleBannerTitle.Render(fit(m.notice.Title, innerW-rowIndent))
+		content[bannerTopRow] = strings.Repeat(" ", rowIndent) + line
+	}
+	if m.notice.Message != "" {
+		line := bodyStyle.Render(fit(m.notice.Message, innerW-rowIndent))
+		row := bannerTopRow
+		if m.notice.Title != "" {
+			row++
+		}
+		if row < identityRow-1 {
+			content[row] = strings.Repeat(" ", rowIndent) + line
+		}
+	}
+}
+
 // fillMenu writes the game list and chrome into the content rows and
 // registers a hitbox per visible game row.
 func (m Model) fillMenu(content []string, ox, oy int) {
-	first := m.scrollOffset()
-	visible := m.games[first:min(first+maxVisible, len(m.games))]
+	m.fillBanner(content)
+
+	origin := m.gamesOrigin()
+	limit := m.maxVisibleGames()
+	first := m.scrollOffset(limit)
+	visible := m.games[first:min(first+limit, len(m.games))]
 
 	for vi, g := range visible {
 		idx := first + vi
@@ -140,9 +189,6 @@ func (m Model) fillMenu(content []string, ox, oy int) {
 		nameLine := strings.Repeat(" ", rowIndent) + cursor + dot + name + " " + tagStyle.Render(fit(tagline, tagWidth))
 
 		desc := strings.Join(g.Descriptors, " · ")
-		// DetectedVersion (live, from the SSH banner every health-check
-		// probe already reads) wins over Game.Version (a manual fallback
-		// for a game that doesn't embed one, or before its first probe).
 		gameVersion := g.DetectedVersion
 		if gameVersion == "" {
 			gameVersion = g.Version
@@ -160,15 +206,13 @@ func (m Model) fillMenu(content []string, ox, oy int) {
 		}
 		descLine := strings.Repeat(" ", rowIndent+4) + descStyle.Render(fit(desc, innerW-rowIndent-4))
 
-		row := gamesTopRow + vi*2
+		row := origin + vi*2
 		if row+1 >= identityRow-1 {
 			break
 		}
 		content[row] = nameLine
 		content[row+1] = descLine
 
-		// Absolute cells: frame line = oy + 1 + contentRow, columns span the
-		// interior. Registered per frame, so boxes always match the render.
 		m.hits.Add(Box{
 			X: ox + 1, Y: oy + 1 + row, W: innerW, H: 2,
 			ID:   "game:" + g.ID,
@@ -191,7 +235,6 @@ func (m Model) fillMenu(content []string, ox, oy int) {
 }
 
 // versionLabel formats a registry version for the menu: "v2.0.0 beta".
-// Unversioned games get no label at all.
 func versionLabel(v string) string {
 	if v == "" {
 		return ""
@@ -204,16 +247,16 @@ func versionLabel(v string) string {
 }
 
 // scrollOffset keeps the cursor visible when more games exist than fit.
-func (m Model) scrollOffset() int {
-	if len(m.games) <= maxVisible {
+func (m Model) scrollOffset(limit int) int {
+	if len(m.games) <= limit {
 		return 0
 	}
-	first := m.cursor - maxVisible + 1
+	first := m.cursor - limit + 1
 	if first < 0 {
 		first = 0
 	}
-	if first > len(m.games)-maxVisible {
-		first = len(m.games) - maxVisible
+	if first > len(m.games)-limit {
+		first = len(m.games) - limit
 	}
 	return first
 }
@@ -253,12 +296,63 @@ func (m Model) fillAbout(content []string) {
 	}
 }
 
+func (m Model) fillAlphaWarn(content []string, ox, oy int) {
+	g := m.alphaGame
+	lines := []string{
+		"",
+		"ALPHA SOFTWARE",
+		"",
+		fit(g.Name+" is in active development.", innerW-rowIndent),
+		"Features, balance, and saves may change without notice.",
+		"",
+		m.alphaCheckboxLine(),
+		"",
+		"▸ CONTINUE TO GAME",
+		"",
+		"SPACE TOGGLE · ENTER CONTINUE · ESC BACK",
+	}
+	for i, line := range lines {
+		if i >= len(content) {
+			break
+		}
+		style := styleAbout
+		switch {
+		case strings.HasPrefix(line, "ALPHA"):
+			style = styleAboutH
+		case strings.HasPrefix(line, "▸ CONTINUE"):
+			style = styleAlphaContinue
+		case strings.HasPrefix(line, "SPACE"):
+			style = styleAboutH
+		case line == m.alphaCheckboxLine():
+			style = styleAlphaCheck
+		}
+		content[i] = strings.Repeat(" ", rowIndent) + style.Render(fit(line, innerW-rowIndent))
+	}
+
+	checkRow := 6
+	continueRow := 8
+	m.hits.Add(Box{
+		X: ox + 1, Y: oy + 1 + checkRow, W: innerW, H: 1,
+		ID: "alpha:check",
+	})
+	m.hits.Add(Box{
+		X: ox + 1, Y: oy + 1 + continueRow, W: innerW, H: 1,
+		ID: "alpha:continue",
+	})
+}
+
+func (m Model) alphaCheckboxLine() string {
+	box := "[ ]"
+	if m.alphaDontShow {
+		box = "[x]"
+	}
+	return box + " Don't show this again for this game"
+}
+
 // padLine pads a styled line to the interior width, truncation-safe.
 func padLine(line string) string {
 	w := lipgloss.Width(line)
 	if w > innerW {
-		// Styled truncation is not worth the complexity here: every builder
-		// above already fits its pieces. Guard anyway.
 		return line
 	}
 	return line + strings.Repeat(" ", innerW-w)

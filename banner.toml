@@ -1,0 +1,7 @@
+# Operator-controlled lobby notice (hot-reloaded via ARCADE_BANNER_PATH).
+# Edit and save; the router picks up changes within one reload cycle.
+enabled = false
+level = "info" # info | warning | danger
+title = ""
+message = """
+"""

@@ -1,0 +1,7 @@
+# Production lobby notice — mounted at /etc/arcade/banner.toml.
+# Hot-reloaded without a router redeploy.
+enabled = false
+level = "info"
+title = ""
+message = """
+"""

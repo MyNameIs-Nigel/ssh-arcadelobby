@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/banner"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/version"
 )
@@ -19,6 +20,30 @@ type fakeSource struct {
 
 func (f *fakeSource) Games() []registry.GameStatus { return f.games }
 func (f *fakeSource) ProbeNow()                    { f.probes++ }
+
+type fakeBanner struct {
+	notice banner.Notice
+}
+
+func (f *fakeBanner) Notice() banner.Notice { return f.notice }
+
+type fakePrefs struct {
+	acked map[string]bool
+	acks  []string
+}
+
+func (f *fakePrefs) HasAlphaAck(gameID string) bool {
+	return f.acked != nil && f.acked[gameID]
+}
+
+func (f *fakePrefs) AckAlpha(gameID string) error {
+	if f.acked == nil {
+		f.acked = make(map[string]bool)
+	}
+	f.acked[gameID] = true
+	f.acks = append(f.acks, gameID)
+	return nil
+}
 
 func twoGames() *fakeSource {
 	return &fakeSource{games: []registry.GameStatus{
@@ -37,7 +62,7 @@ func newFixture(t *testing.T, src *fakeSource, opts ...Option) *fixture {
 	t.Helper()
 	f := &fixture{src: src, now: time.Unix(1_700_000_000, 0)}
 	opts = append(opts, WithClock(func() time.Time { return f.now }))
-	f.model = New(src, nil, "SHA256:testfingerprint", 80, 24, 5*time.Minute, opts...)
+	f.model = New(src, nil, nil, nil, "SHA256:testfingerprint", nil, 80, 24, 5*time.Minute, opts...)
 	return f
 }
 
@@ -419,6 +444,103 @@ func TestBorderLinesAreFrameWidth(t *testing.T) {
 	m.blink = true
 	if w := lipgloss.Width(m.bottomBorder()); w != frameW {
 		t.Fatalf("bottom border width with cursor = %d, want %d", w, frameW)
+	}
+}
+
+func TestViewShowsOperatorBanner(t *testing.T) {
+	b := &fakeBanner{notice: banner.Notice{
+		Enabled: true,
+		Level:   banner.LevelWarning,
+		Title:   "Scheduled maintenance",
+		Message: "Farm offline 02:00 UTC.",
+	}}
+	f := &fixture{src: twoGames(), now: time.Unix(1_700_000_000, 0)}
+	f.model = New(f.src, b, nil, nil, "SHA256:testfingerprint", nil, 80, 24, 5*time.Minute,
+		WithClock(func() time.Time { return f.now }))
+	view := renderPlain(f.model)
+	if !strings.Contains(view, "Scheduled maintenance") || !strings.Contains(view, "Farm offline") {
+		t.Fatalf("banner not rendered:\n%s", view)
+	}
+}
+
+func TestAlphaWarningBlocksUntilContinue(t *testing.T) {
+	src := &fakeSource{games: []registry.GameStatus{
+		{Game: registry.Game{ID: "moon", Name: "MOON MINER", Tagline: "Drill.", Version: "1.0.0"}, Online: true},
+	}}
+	f := newFixture(t, src)
+	cmd := f.press(t, "enter")
+	if isQuit(cmd) {
+		t.Fatal("alpha game entered without warning")
+	}
+	if !f.model.alphaOpen {
+		t.Fatal("alpha overlay not opened")
+	}
+	view := renderPlain(f.model)
+	if !strings.Contains(view, "ALPHA SOFTWARE") || !strings.Contains(view, "Don't show this again") {
+		t.Fatalf("alpha overlay missing:\n%s", view)
+	}
+	cmd = f.press(t, "enter")
+	if !isQuit(cmd) {
+		t.Fatal("continue did not launch game")
+	}
+	if f.model.Result().Game.ID != "moon" {
+		t.Fatalf("result = %+v", f.model.Result())
+	}
+}
+
+func TestAlphaWarningDontShowPersistsPerGame(t *testing.T) {
+	src := &fakeSource{games: []registry.GameStatus{
+		{Game: registry.Game{ID: "moon", Name: "MOON MINER", Tagline: "Drill.", Version: "1.0.0"}, Online: true},
+		{Game: registry.Game{ID: "derby", Name: "PACKET DERBY", Tagline: "Soon.", Version: "1.0.0"}, Online: true},
+	}}
+	prefs := &fakePrefs{}
+	f := &fixture{src: src, now: time.Unix(1_700_000_000, 0)}
+	f.model = New(src, nil, nil, nil, "SHA256:testfingerprint", prefs, 80, 24, 5*time.Minute,
+		WithClock(func() time.Time { return f.now }))
+
+	f.press(t, "enter")
+	f.press(t, "space")
+	f.press(t, "enter")
+	if len(prefs.acks) != 1 || prefs.acks[0] != "moon" {
+		t.Fatalf("acks = %v", prefs.acks)
+	}
+
+	f.model = New(src, nil, nil, nil, "SHA256:testfingerprint", prefs, 80, 24, 5*time.Minute,
+		WithClock(func() time.Time { return f.now }))
+	if cmd := f.press(t, "enter"); !isQuit(cmd) {
+		t.Fatal("second moon entry should skip warning")
+	}
+
+	f.model = New(src, nil, nil, nil, "SHA256:testfingerprint", prefs, 80, 24, 5*time.Minute,
+		WithClock(func() time.Time { return f.now }))
+	f.press(t, "down")
+	if cmd := f.press(t, "enter"); isQuit(cmd) {
+		t.Fatal("other alpha game should still warn")
+	}
+	if !f.model.alphaOpen {
+		t.Fatal("expected warning for second alpha game")
+	}
+}
+
+func TestBetaGameSkipsAlphaWarning(t *testing.T) {
+	src := &fakeSource{games: []registry.GameStatus{
+		{Game: registry.Game{ID: "farm", Name: "IDLE FARMER", Tagline: "Grow.", Version: "2.0.0"}, Online: true},
+	}}
+	f := newFixture(t, src)
+	if cmd := f.press(t, "enter"); !isQuit(cmd) {
+		t.Fatal("beta game should launch directly")
+	}
+}
+
+func TestAlphaUsesDetectedVersion(t *testing.T) {
+	src := &fakeSource{games: []registry.GameStatus{
+		{Game: registry.Game{ID: "moon", Name: "MOON MINER", Tagline: "Drill.", Version: "2.0.0"},
+			Online: true, DetectedVersion: "1.2.0"},
+	}}
+	f := newFixture(t, src)
+	f.press(t, "enter")
+	if !f.model.alphaOpen {
+		t.Fatal("detected alpha version should trigger warning")
 	}
 }
 

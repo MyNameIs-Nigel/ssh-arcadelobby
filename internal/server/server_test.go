@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -17,8 +18,10 @@ import (
 
 	gossh "golang.org/x/crypto/ssh"
 
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/banner"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/config"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/store"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/testutil"
 )
 
@@ -53,6 +56,11 @@ func testArcade(t *testing.T, games map[string]string, mutate func(*config.Confi
 	cfg.HostKeyPath = filepath.Join(dir, "host_key")
 	cfg.ProxyKeyPath = filepath.Join(dir, "proxy_key")
 	cfg.GamesPath = gamesPath
+	cfg.BannerPath = filepath.Join(dir, "banner.toml")
+	cfg.DBPath = filepath.Join(dir, "arcade.db")
+	if err := os.WriteFile(cfg.BannerPath, []byte("enabled = false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cfg.LobbyIdleTimeout = time.Hour
 	cfg.RateLimitPerSecond = 100
 	cfg.RateLimitBurst = 100
@@ -72,7 +80,23 @@ func testArcade(t *testing.T, games map[string]string, mutate func(*config.Confi
 	reg.Start()
 	t.Cleanup(reg.Close)
 
-	srv, err := New(cfg, logger, reg)
+	ban, err := banner.New(cfg.BannerPath, banner.Options{
+		ReloadInterval: 50 * time.Millisecond,
+		Logger:         logger,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ban.Start()
+	t.Cleanup(ban.Close)
+
+	st, err := store.Open(context.Background(), cfg.DBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	srv, err := New(cfg, logger, reg, ban, st)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,6 +408,94 @@ func TestPerKeySessionCap(t *testing.T) {
 	if !strings.Contains(buf.String(), "Too many active sessions") {
 		t.Fatalf("expected cap message, got %q", buf.String())
 	}
+}
+
+func TestAlphaWarningShownOncePerKeyAndGame(t *testing.T) {
+	fake := testutil.StartFakeGameVersion(t, "1.0.0", func(_ *testutil.SessionRecord, ch gossh.Channel) int {
+		_, _ = io.WriteString(ch, "ALPHA-GAME-READY")
+		buf := make([]byte, 1)
+		for {
+			if _, err := ch.Read(buf); err != nil {
+				return 0
+			}
+			if buf[0] == 'x' {
+				return 0
+			}
+		}
+	})
+
+	_, reg, addr := testArcade(t, map[string]string{"alpha": fake.Addr}, nil)
+	waitOnline(t, reg, "alpha")
+	for _, g := range reg.Games() {
+		if g.ID == "alpha" && g.DetectedVersion != "1.0.0" {
+			t.Fatalf("detected version = %q", g.DetectedVersion)
+		}
+	}
+
+	p := dialPlayer(t, addr, "Scout", testSigner(t))
+	waitContains(t, p, "ALPHA GAME")
+
+	if _, err := io.WriteString(p.stdin, "\r"); err != nil {
+		t.Fatal(err)
+	}
+	waitContains(t, p, "ALPHA SOFTWARE")
+
+	if _, err := io.WriteString(p.stdin, " "); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(p.stdin, "\r"); err != nil {
+		t.Fatal(err)
+	}
+	waitContains(t, p, "ALPHA-GAME-READY")
+
+	if _, err := io.WriteString(p.stdin, "x"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if strings.Contains(p.out.Plain(), "Your key is your account") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("menu did not return after game exit")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if _, err := io.WriteString(p.stdin, "\r"); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(p.out.Plain(), "ALPHA-GAME-READY") {
+			return
+		}
+		if strings.Contains(p.out.Plain(), "ALPHA SOFTWARE") {
+			t.Fatal("alpha warning shown again after ack")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("second enter did not bridge into game")
+}
+
+func TestOperatorBannerRendersInLobby(t *testing.T) {
+	dir := t.TempDir()
+	bannerPath := filepath.Join(dir, "banner.toml")
+	if err := os.WriteFile(bannerPath, []byte(`
+enabled = true
+level = "info"
+title = "Fleet news"
+message = "Welcome back."
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, addr := testArcade(t, map[string]string{"alpha": "127.0.0.1:1"}, func(c *config.Config) {
+		c.BannerPath = bannerPath
+	})
+	p := dialPlayer(t, addr, "alice", testSigner(t))
+	waitContains(t, p, "Fleet news")
+	waitContains(t, p, "Welcome back.")
 }
 
 // stripANSI removes escape sequences: CSI, OSC, and two-byte ESC sequences.

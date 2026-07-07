@@ -39,6 +39,13 @@ func (srv *Server) handle(s ssh.Session) {
 		"remote", s.RemoteAddr().String(),
 	)
 
+	if srv.store != nil {
+		pubKey := string(gossh.MarshalAuthorizedKey(s.PublicKey()))
+		if err := srv.store.TouchAccount(s.Context(), fp, pubKey, time.Now().Unix()); err != nil {
+			logger.Warn("touch account failed", "error", err)
+		}
+	}
+
 	pump := newInputPump(s)
 	_, winCh, _ := s.Pty()
 	wp := newWinchPump(winCh)
@@ -136,11 +143,22 @@ func (srv *Server) runLobby(s ssh.Session, pump *inputPump, wp *winchPump, fp, f
 	poke := srv.registry.Subscribe()
 	defer srv.registry.Unsubscribe(poke)
 
+	var bannerPoke chan struct{}
+	if srv.banner != nil {
+		bannerPoke = srv.banner.Subscribe()
+		defer srv.banner.Unsubscribe(bannerPoke)
+	}
+
 	opts := []lobby.Option{}
 	if flash != "" {
 		opts = append(opts, lobby.WithFlash(flash))
 	}
-	model := lobby.New(srv.registry, poke, fp,
+	prefs := sessionPrefs{
+		store:       srv.store,
+		fingerprint: fp,
+		now:         func() int64 { return time.Now().Unix() },
+	}
+	model := lobby.New(srv.registry, srv.banner, poke, bannerPoke, fp, prefs,
 		pty.Window.Width, pty.Window.Height, srv.cfg.LobbyIdleTimeout, opts...)
 
 	envs := append(s.Environ(), "TERM="+pty.Term)

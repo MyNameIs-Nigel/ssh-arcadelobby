@@ -1,0 +1,14 @@
+# Litestream replication config template for ssh-arcadelobby.
+#
+# Values expand from the environment. Production only needs
+# LITESTREAM_REPLICA_URL and LITESTREAM_S3_REGION — leave endpoint and
+# access-key vars unset so litestream picks up the EC2 instance role.
+dbs:
+  - path: ${ARCADE_DB_PATH}
+    replicas:
+      - url: ${LITESTREAM_REPLICA_URL}
+        region: ${LITESTREAM_S3_REGION}
+        endpoint: ${LITESTREAM_S3_ENDPOINT}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        retention: 72h

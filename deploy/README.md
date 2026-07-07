@@ -28,7 +28,7 @@ story this stack wires into.
    it later — see docs/04's "Compose changes" section):
 
    ```bash
-   cp deploy/docker-compose.yml deploy/games.toml /srv/ssharcade/
+   cp deploy/docker-compose.yml deploy/games.toml deploy/banner.toml /srv/ssharcade/
    ```
 
 4. **Provision secrets** (one-time per host — the proxy key is never
