@@ -263,6 +263,14 @@ func StartSilentListener(t *testing.T) string {
 // prober sees it Online, but a real handshake against it fails.
 func StartBannerListener(t *testing.T) string {
 	t.Helper()
+	return StartCustomBannerListener(t, "SSH-2.0-fakebanner\r\n")
+}
+
+// StartCustomBannerListener speaks the given raw banner line (include the
+// trailing "\r\n") and nothing else — for tests exercising the prober's
+// fleet-version extraction from real-shaped and non-version-shaped banners.
+func StartCustomBannerListener(t *testing.T, banner string) string {
+	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -274,7 +282,7 @@ func StartBannerListener(t *testing.T) string {
 				return
 			}
 			go func() {
-				_, _ = fmt.Fprint(conn, "SSH-2.0-fakebanner\r\n")
+				_, _ = fmt.Fprint(conn, banner)
 				_, _ = io.Copy(io.Discard, conn)
 			}()
 		}

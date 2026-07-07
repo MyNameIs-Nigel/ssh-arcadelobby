@@ -8,7 +8,7 @@ tagline = "Crops grow while you're away."
 descriptors = ["idle", "prestige", "market"]
 addr    = "127.0.0.1:2223"
 order   = 10
-version = "2.0.0"
+# version: live-detected from the SSH banner, not set here (see docs/03).
 
 [[games]]
 id      = "moonminer"
@@ -17,4 +17,4 @@ tagline = "Drill asteroids, dodge pirates."
 descriptors = ["extraction", "4 worlds", "push-your-luck"]
 addr    = "127.0.0.1:2224"
 order   = 20
-version = "1.0.0"
+# version: live-detected, same as idlefarm above.

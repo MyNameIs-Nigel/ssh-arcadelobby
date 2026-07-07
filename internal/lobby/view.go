@@ -140,7 +140,14 @@ func (m Model) fillMenu(content []string, ox, oy int) {
 		nameLine := strings.Repeat(" ", rowIndent) + cursor + dot + name + " " + tagStyle.Render(fit(tagline, tagWidth))
 
 		desc := strings.Join(g.Descriptors, " · ")
-		if v := versionLabel(g.Version); v != "" {
+		// DetectedVersion (live, from the SSH banner every health-check
+		// probe already reads) wins over Game.Version (a manual fallback
+		// for a game that doesn't embed one, or before its first probe).
+		gameVersion := g.DetectedVersion
+		if gameVersion == "" {
+			gameVersion = g.Version
+		}
+		if v := versionLabel(gameVersion); v != "" {
 			if desc == "" {
 				desc = v
 			} else {

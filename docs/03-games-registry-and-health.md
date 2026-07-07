@@ -31,7 +31,8 @@ addr    = "moonminer:22"              # private-network host:port
 host_key = ""                         # optional: pinned public key (authorized_keys
                                       # format). Empty = accept any (isolated net).
 order   = 10                          # menu sort, ascending
-version = "1.0.0"                     # optional: fleet version scheme (below)
+# version = "1.0.0"                   # optional manual fallback (below) — omit
+                                      # entirely once the game is live-detected
 
 [[games]]
 id      = "idlefarmer"
@@ -40,7 +41,6 @@ tagline = "Crops grow while you're away."
 descriptors = ["idle", "prestige", "market"]
 addr    = "idlefarmer:22"
 order   = 20
-version = "2.0.0"
 ```
 
 Validation at load: unique ids, non-empty name/addr, parseable host_key
@@ -56,14 +56,26 @@ Every fleet component versions as `<channel>.<major>.<minor>`:
 - the **second** number (`x`) is the major release
 - the **third** number (`y`) is the minor patch / hotfix
 
-`version` here is registry metadata for the lobby menu (rendered as e.g.
-`v2.0.0 beta` after the descriptors); each game also pins the same string
-in its own code (an `internal/version` const shown on its help screen), and
-the router pins its own in `internal/version`. The registry can't enforce
-that a game's binary agrees with its games.toml entry — keeping the two in
-sync is part of shipping a game release. The key is optional so a router
-upgrade never hard-fails at boot on an older hand-maintained production
-file, but a malformed value rejects the file like any other field.
+**Live-detected, not hand-maintained.** Each fleet game pins its version in
+an `internal/version` const and wires it into its wish server's `Version`
+option, which becomes the literal SSH version-exchange banner (e.g.
+`SSH-2.0-1.0.0`). The health-check prober already reads this banner on
+every probe cycle to decide liveness (`internal/registry/prober.go`'s
+`bannerVersion`) — extracting the version costs no extra round trip. The
+lobby menu renders whichever version was last read this way
+(`GameStatus.DetectedVersion`), formatted as e.g. `v2.0.0 beta` after the
+descriptors, and it's sticky across a probe failure so it keeps showing
+the last-known value while a game is `○ OFFLINE` rather than blanking out.
+
+`games.toml`'s `version` key is now only a **manual fallback**: it renders
+only if `DetectedVersion` is empty — before a game's first successful
+probe, or for a game whose SSH server doesn't embed one at all (a
+third-party service, or a legacy game predating fleet versioning, e.g.
+idlefarmer). Leave it unset for any game already wired for live detection;
+setting it there risks silently drifting from the truth once nobody
+remembers to also bump it by hand. The key is optional so a router upgrade
+never hard-fails at boot on an older hand-maintained production file, but a
+malformed value (when present) rejects the file like any other field.
 
 ### Hot reload
 

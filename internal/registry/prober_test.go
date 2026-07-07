@@ -128,6 +128,73 @@ func TestFlapDamping(t *testing.T) {
 	}
 }
 
+// TestProbeDetectsVersionFromBanner: a game embedding a fleet version in
+// its SSH banner (internal/version's const, wired via the wish server's
+// Version option) gets it read automatically — no games.toml edit needed.
+func TestProbeDetectsVersionFromBanner(t *testing.T) {
+	addr := testutil.StartCustomBannerListener(t, "SSH-2.0-1.2.3\r\n")
+	r := registryFor(t, map[string]string{"game": addr})
+	r.probeCycle()
+	if got := status(t, r, "game").DetectedVersion; got != "1.2.3" {
+		t.Fatalf("DetectedVersion = %q, want 1.2.3", got)
+	}
+}
+
+// TestProbeIgnoresNonFleetBanner: a banner that doesn't embed a
+// <channel>.<major>.<minor>-shaped version (a third-party SSH server, or a
+// legacy game predating fleet versioning) yields no detected version, and
+// must not affect online/offline status either way.
+func TestProbeIgnoresNonFleetBanner(t *testing.T) {
+	addr := testutil.StartCustomBannerListener(t, "SSH-2.0-OpenSSH_9.6\r\n")
+	r := registryFor(t, map[string]string{"game": addr})
+	r.probeCycle()
+	st := status(t, r, "game")
+	if !st.Online {
+		t.Fatal("non-fleet banner must still probe Online")
+	}
+	if st.DetectedVersion != "" {
+		t.Fatalf("DetectedVersion = %q, want empty for a non-fleet banner", st.DetectedVersion)
+	}
+}
+
+// TestDetectedVersionStickyWhileOffline: the last known version keeps
+// showing (e.g. "last seen v1.0.0") through a probe failure rather than
+// blanking out the moment a game flaps offline.
+func TestDetectedVersionStickyWhileOffline(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_, _ = fmt.Fprint(conn, "SSH-2.0-1.0.0\r\n")
+			_ = conn.Close()
+		}
+	}()
+
+	r := registryFor(t, map[string]string{"game": addr})
+	r.probeCycle()
+	if got := status(t, r, "game").DetectedVersion; got != "1.0.0" {
+		t.Fatalf("DetectedVersion = %q, want 1.0.0", got)
+	}
+
+	_ = ln.Close()
+	r.probeCycle()
+	r.probeCycle() // clears flap damping, game goes Offline
+	st := status(t, r, "game")
+	if st.Online {
+		t.Fatal("setup: game should be Offline after two failures")
+	}
+	if st.DetectedVersion != "1.0.0" {
+		t.Fatalf("DetectedVersion = %q, want it to stay 1.0.0 while Offline", st.DetectedVersion)
+	}
+}
+
 // TestReportFlipsOfflineImmediately: a bridge dial failure must not wait
 // out the damping threshold.
 func TestReportFlipsOfflineImmediately(t *testing.T) {

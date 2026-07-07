@@ -53,6 +53,15 @@ type GameStatus struct {
 	Game
 	Online     bool
 	LastChange time.Time
+
+	// DetectedVersion is read live from the game's SSH version banner on
+	// every health-check probe (see prober.go's bannerVersion) — no extra
+	// network cost, since the prober already reads that banner to decide
+	// liveness. Sticky across probe failures (last known value survives
+	// while Offline); "" until the first successful probe, or forever for
+	// a game whose SSH server doesn't embed a fleet version. Takes priority
+	// over Game.Version, which is now only a manual fallback.
+	DetectedVersion string
 }
 
 // Options tune the prober; zero values take the documented defaults.
@@ -80,9 +89,10 @@ func (o Options) withDefaults() Options {
 }
 
 type health struct {
-	online     bool
-	fails      int
-	lastChange time.Time
+	online          bool
+	fails           int
+	lastChange      time.Time
+	detectedVersion string
 }
 
 // Registry loads games.toml, hot-reloads it, probes game liveness, and
@@ -176,6 +186,7 @@ func (r *Registry) Games() []GameStatus {
 		if h := r.health[g.ID]; h != nil {
 			st.Online = h.online
 			st.LastChange = h.lastChange
+			st.DetectedVersion = h.detectedVersion
 		}
 		out = append(out, st)
 	}

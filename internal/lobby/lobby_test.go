@@ -210,6 +210,21 @@ func TestMenuShowsGameVersionWithChannel(t *testing.T) {
 	}
 }
 
+func TestMenuPrefersDetectedVersionOverStatic(t *testing.T) {
+	src := &fakeSource{games: []registry.GameStatus{
+		{Game: registry.Game{ID: "moon", Name: "MOON MINER", Tagline: "Drill.", Descriptors: []string{"x"}, Version: "1.0.0"},
+			Online: true, DetectedVersion: "1.2.0"},
+	}}
+	f := newFixture(t, src)
+	view := renderPlain(f.model)
+	if !strings.Contains(view, "v1.2.0 alpha") {
+		t.Fatal("live-detected version should win over the static games.toml value")
+	}
+	if strings.Contains(view, "v1.0.0") {
+		t.Fatal("stale static version should not render once a live one is detected")
+	}
+}
+
 func TestAboutShowsRouterVersion(t *testing.T) {
 	f := newFixture(t, twoGames())
 	f.press(t, "?")
