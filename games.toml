@@ -20,3 +20,11 @@ tagline = "Crops grow while you're away."
 descriptors = ["idle", "prestige", "market"]
 addr    = "idlefarmer:22"
 order   = 20
+
+[[games]]
+id      = "packetderby"
+name    = "PACKET DERBY"
+tagline = "Coming soon..."
+descriptors = ["racing", "multiplayer"]
+addr    = "packetderby:22"
+order   = 30
