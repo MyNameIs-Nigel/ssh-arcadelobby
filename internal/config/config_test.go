@@ -19,6 +19,12 @@ func TestDefaults(t *testing.T) {
 	if cfg.GamesPath != "games.toml" {
 		t.Fatalf("unexpected games path: %q", cfg.GamesPath)
 	}
+	if cfg.BannerPath != "banner.toml" {
+		t.Fatalf("unexpected banner path: %q", cfg.BannerPath)
+	}
+	if cfg.DBPath != "var/arcade.db" {
+		t.Fatalf("unexpected db path: %q", cfg.DBPath)
+	}
 	if cfg.LobbyIdleTimeout != 5*time.Minute || cfg.ProbeInterval != 15*time.Second {
 		t.Fatalf("unexpected duration defaults: %+v", cfg)
 	}

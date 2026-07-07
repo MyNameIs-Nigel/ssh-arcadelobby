@@ -14,8 +14,12 @@ bridge dials from it.
 
 - `internal/registry/` — `registry.go` (load/validate/hot-reload),
   `prober.go`, tests
+- `internal/banner/` — `banner.go` (load/validate/hot-reload for notices)
+- `internal/store/` — router SQLite (accounts, alpha-warning acks)
 - `games.toml` — checked-in default (dev), overridden by a mounted file in
   production (`ARCADE_GAMES_PATH`)
+- `banner.toml` — operator notice default (dev), mounted in production
+  (`ARCADE_BANNER_PATH`)
 
 ## Spec
 
@@ -85,6 +89,37 @@ atomically (the registry hands out immutable snapshots). Adding a game to
 production = edit the mounted file, done by the next cycle. Also reload on
 SIGHUP for impatient operators (no-op on Windows dev hosts — guard the
 signal registration).
+
+### Operator banner (`banner.toml`)
+
+A separate hot-reloaded file (`ARCADE_BANNER_PATH`, default `banner.toml`)
+controls a persistent notice strip above the game list — news, downtime
+alerts, maintenance windows. Same reload semantics as `games.toml`: mtime
+polling every probe cycle, bad reload keeps the previous good notice, a
+missing file disables the strip (never fatal at boot).
+
+```toml
+enabled = true
+level = "warning"   # info | warning | danger
+title = "Scheduled maintenance"
+message = """
+Farm will be offline 02:00–02:15 UTC.
+"""
+```
+
+Validation: `level` must be `info`, `warning`, or `danger` when enabled;
+at least one of `title`/`message` must be non-empty; lengths capped
+(title 48, message 240). The lobby subscribes to banner changes the same
+way it subscribes to registry changes.
+
+### Alpha-game entry warning
+
+Games whose fleet version resolves to channel `alpha` (`1.x.y`, from live
+`DetectedVersion` with `games.toml` fallback) show a one-time warning
+overlay before bridging. Players may check **Don't show this again for
+this game**; the choice is stored per `(SSH key fingerprint, game id)` in
+the router's SQLite file (`ARCADE_DB_PATH`). Beta and unversioned games
+skip the gate entirely.
 
 ### Health prober
 

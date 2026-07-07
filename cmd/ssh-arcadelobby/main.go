@@ -17,10 +17,12 @@ import (
 
 	"github.com/charmbracelet/ssh"
 
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/banner"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/config"
 	applog "github.com/mynameis-nigel/ssh-arcadelobby/internal/log"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/server"
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/store"
 )
 
 func main() {
@@ -46,7 +48,25 @@ func main() {
 	reg.Start()
 	defer reg.Close()
 
-	srv, err := server.New(cfg, logger, reg)
+	ban, err := banner.New(cfg.BannerPath, banner.Options{
+		ReloadInterval: cfg.ProbeInterval,
+		Logger:         logger,
+	})
+	if err != nil {
+		logger.Error("banner init failed", "path", cfg.BannerPath, "error", err)
+		os.Exit(1)
+	}
+	ban.Start()
+	defer ban.Close()
+
+	st, err := store.Open(context.Background(), cfg.DBPath)
+	if err != nil {
+		logger.Error("store open failed", "path", cfg.DBPath, "error", err)
+		os.Exit(1)
+	}
+	defer st.Close()
+
+	srv, err := server.New(cfg, logger, reg, ban, st)
 	if err != nil {
 		logger.Error("server init failed", "error", err)
 		os.Exit(1)

@@ -68,8 +68,14 @@ type FakeGame struct {
 }
 
 // StartFakeGame listens on an ephemeral localhost port. script may be nil
-// (defaults to EchoScript). The server stops on test cleanup.
+// (defaults to EchoScript). The server speaks the default Go SSH banner.
 func StartFakeGame(t *testing.T, script Script) *FakeGame {
+	return StartFakeGameVersion(t, "", script)
+}
+
+// StartFakeGameVersion is like StartFakeGame but embeds version in the SSH
+// banner as SSH-2.0-<version> when version is non-empty (fleet scheme).
+func StartFakeGameVersion(t *testing.T, version string, script Script) *FakeGame {
 	t.Helper()
 	if script == nil {
 		script = EchoScript
@@ -91,6 +97,9 @@ func StartFakeGame(t *testing.T, script Script) *FakeGame {
 				Extensions: map[string]string{"wire-key": string(gossh.MarshalAuthorizedKey(key))},
 			}, nil
 		},
+	}
+	if version != "" {
+		cfg.ServerVersion = "SSH-2.0-" + version
 	}
 	cfg.AddHostKey(hostSigner)
 
