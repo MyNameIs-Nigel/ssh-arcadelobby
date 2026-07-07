@@ -30,11 +30,3 @@ addr    = "moonminer:2222"
 host_key = ""
 order   = 20
 
-[[games]]
-id      = "idlefarmer"
-name    = "IDLE FARMER (v1)"
-tagline = "The original — crops grow while you're away."
-descriptors = ["idle", "prestige", "market", "legacy"]
-addr    = "idlefarmer:2222"
-host_key = ""
-order   = 30
