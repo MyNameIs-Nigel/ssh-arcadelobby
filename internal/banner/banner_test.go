@@ -14,7 +14,13 @@ func quietLogger() *slog.Logger {
 
 func writeBanner(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	// Atomic replace: a plain WriteFile truncates in place, and a concurrent
+	// reload can read an empty file that unmarshals as enabled=false.
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -91,7 +97,8 @@ level = "nope"
 title = "Bad"
 `)
 	bumpMtime(t, path, time.Second)
-	deadline := time.Now().Add(2 * time.Second)
+	s.ReloadNow()
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if n := s.Notice(); n.Title == "Good" {
 			return
@@ -99,6 +106,29 @@ title = "Bad"
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("notice after bad reload = %+v", s.Notice())
+}
+
+func TestEmptyFileRejectedOnReload(t *testing.T) {
+	s, path := newTestSource(t, `
+enabled = true
+level = "info"
+title = "Good"
+message = "Still good"
+`)
+	s.Start()
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bumpMtime(t, path, time.Second)
+	s.ReloadNow()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if n := s.Notice(); n.Title == "Good" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("notice after empty write = %+v", s.Notice())
 }
 
 func TestHotReloadPicksUpChange(t *testing.T) {

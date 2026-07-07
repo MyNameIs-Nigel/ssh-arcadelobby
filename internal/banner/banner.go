@@ -248,6 +248,9 @@ func loadFile(path string) (Notice, time.Time, error) {
 	if err != nil {
 		return Notice{}, time.Time{}, fmt.Errorf("banner: %w", err)
 	}
+	if strings.TrimSpace(string(raw)) == "" {
+		return Notice{}, time.Time{}, fmt.Errorf("banner: %s: empty file", path)
+	}
 	var root fileRoot
 	if err := toml.Unmarshal(raw, &root); err != nil {
 		return Notice{}, time.Time{}, fmt.Errorf("banner: parse %s: %w", path, err)

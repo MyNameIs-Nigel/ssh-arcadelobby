@@ -22,9 +22,10 @@ const (
 	windowTitle = "SSHARCADE"
 
 	// Layout slots inside the content region (see doc 01's mock).
-	gamesTopRow   = 1  // first game name line when no banner
-	maxVisible    = 7  // game rows that fit (2 lines each)
-	bannerTopRow  = 0  // operator notice when enabled
+	gamesTopRow        = 1 // first game name line when no banner
+	maxVisible         = 7 // game rows that fit (2 lines each)
+	bannerTopRow       = 0 // operator notice when enabled
+	bannerReserveRows  = 4 // blank rows reserved above the game list
 	identityRow   = 16
 	flashRow      = 18
 	fingerRow     = 20
@@ -108,16 +109,23 @@ func (m Model) bottomBorder() string {
 
 func (m Model) gamesOrigin() int {
 	if m.notice.Enabled {
-		return 2
+		return gamesTopRow + bannerReserveRows
 	}
 	return gamesTopRow
 }
 
 func (m Model) maxVisibleGames() int {
-	if m.notice.Enabled {
-		return maxVisible - 1
+	if !m.notice.Enabled {
+		return maxVisible
 	}
-	return maxVisible
+	n := (identityRow - m.gamesOrigin()) / 2
+	if n < 1 {
+		return 1
+	}
+	if n > maxVisible {
+		return maxVisible
+	}
+	return n
 }
 
 func (m Model) fillBanner(content []string) {
