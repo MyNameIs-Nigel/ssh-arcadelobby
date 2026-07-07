@@ -53,13 +53,13 @@ story this stack wires into.
 
    ```bash
    docker compose up -d
-   docker compose ps       # router should be Up; farm should be Up
+   docker compose ps       # router, farm, moonminer should all be Up
    ssh -p 22 <host>        # menu should appear
    ```
 
-   `moonminer` and `idlefarmer` will fail to pull or won't bridge identity
-   correctly yet — see the readiness notes at the top of
-   `docker-compose.yml`. That's expected; the menu shows them `○ OFFLINE`
+   `idlefarmer` will fail to bridge identity correctly (it predates the
+   trusted-proxy retrofit) — see the readiness notes at the top of
+   `docker-compose.yml`. That's expected; the menu shows it `○ OFFLINE`
    rather than breaking anything else (docs/04's acceptance criteria).
 
 ## Self-hosted runner setup (one-time per game repo)
@@ -75,8 +75,8 @@ for CI at all.
 
 GitHub's free tier has no account-wide runner pool for personal accounts —
 every repo that wants a deploy job needs its **own** runner registered on
-the host. Repeat this for each repo (`ssh-arcadelobby`, `ssh-farm`, and any
-future game repo):
+the host. Repeat this for each repo (`ssh-arcadelobby`, `ssh-farm`,
+`ssh-moonminer`, and any future game repo):
 
 ```bash
 # One directory per repo — each runner is its own systemd service.
@@ -180,8 +180,8 @@ required) until you provision a bucket. One-time setup (docs/06):
    ```
 
 4. Uncomment the `LITESTREAM_*`/`*_MC_PATH`/`MC_HOST_s3` lines for `farm`
-   (and `router`, for its own `keys/router/` backup) with your real bucket
-   name, then `docker compose up -d`.
+   and `moonminer` (and `router`, for its own `keys/router/` backup) with
+   your real bucket name, then `docker compose up -d`.
 
 Restore/kill drills for this stack are `ssh-farm`'s
 `scripts/restore-drill/` (`kill-drill.sh`, `restore-to-scratch.sh`,
@@ -190,7 +190,9 @@ script lives in ssh-farm" rule. Run them against a real bucket before
 trusting this in production; this repo's own validation only confirms the
 compose file parses and the router's own image builds/restores its keys
 correctly (see docs/04's acceptance criteria for what still needs a live
-EC2 host: the instance-loss drill and the public port scan).
+EC2 host: the instance-loss drill and the public port scan). moonminer has
+no durability drill run against it yet — same gap noted in TODO.md's fleet
+rollout item.
 
 ## Redeploying a single service
 

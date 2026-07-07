@@ -4,19 +4,20 @@
 # on the host (see ../deploy/README.md for the full bootstrap).
 #
 # Readiness today (2026-07):
-#   router, farm   — real images, real proxy-identity support, ready to run.
-#   moonminer      — its repo has no server implementation or published
-#                     image yet (docs/framework/README.md there tracks it);
-#                     this block is the target shape to flip on once it does.
+#   router, farm, moonminer — real images, real proxy-identity support,
+#                     ready to run. moonminer shipped as a playable prototype
+#                     (not fully polished, but stable enough to go live) with
+#                     its own ci.yml/release.yml + Dockerfile on the same
+#                     Litestream/S3 durability pattern as farm's.
 #   idlefarmer     — playable, but its trusted-proxy identity retrofit
 #                     (docs/02-bridge-and-identity-protocol.md) isn't done —
 #                     bridging real player identity through the router won't
 #                     work correctly until that lands. It also predates the
 #                     fleet's Litestream decision (doc 06) and has no S3
 #                     durability wiring of its own yet.
-# Both are left in so `games.toml`/compose stay one edit away from live once
-# their repos catch up, per this doc's "adding a game touches the compose
-# file and games.toml, never the router binary" goal.
+# idlefarmer is left in so `games.toml`/compose stay one edit away from live
+# once its repo catches up, per this doc's "adding a game touches the
+# compose file and games.toml, never the router binary" goal.
 services:
   router:
     image: ghcr.io/mynameis-nigel/ssh-arcadelobby:latest
@@ -92,10 +93,6 @@ services:
     cpus: 1.0
 
   moonminer:
-    # Not yet buildable — ssh-moonminer is planning-only (stub main.go, no
-    # Dockerfile, no published image). `docker compose up moonminer` will
-    # fail to pull until that repo ships one; `docker compose config` still
-    # parses this fine. Flip on by uncommenting once real.
     image: ghcr.io/mynameis-nigel/ssh-moonminer:latest
     environment:
       MOONMINER_LISTEN_PORT: "2222"
