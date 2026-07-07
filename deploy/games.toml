@@ -4,12 +4,9 @@
 # Schema: ../docs/03-games-registry-and-health.md. Dev default: ../games.toml
 # (loopback addressing for dev-local-fleet.sh).
 #
-# moonminer and idlefarmer are listed even though neither is safely
-# deployable yet (see deploy/docker-compose.yml's readiness notes) — the
-# registry's health prober is designed for exactly this: an entry whose
-# backing container isn't up yet just shows `○ OFFLINE` in the menu rather
-# than breaking anything, so this file stays one edit away from live once
-# those repos catch up.
+# An entry whose backing container isn't up yet just shows `○ OFFLINE` in
+# the menu rather than breaking anything (the health prober is designed for
+# exactly this), so a game can be listed here ahead of its first deploy.
 
 [[games]]
 id      = "farm"
@@ -20,6 +17,9 @@ addr    = "farm:2222"                # private-network host:port
 host_key = ""                         # optional: pinned public key (authorized_keys
                                       # format). Empty = accept any (isolated net).
 order   = 10
+version = "2.0.0"                     # fleet scheme <channel>.<major>.<minor>:
+                                      # 1.x.y = alpha, 2.x.y = beta; x major, y patch.
+                                      # Keep in sync with the game's own version const.
 
 [[games]]
 id      = "moonminer"
@@ -29,4 +29,5 @@ descriptors = ["extraction", "4 worlds", "push-your-luck"]
 addr    = "moonminer:2222"
 host_key = ""
 order   = 20
+version = "1.0.0"
 

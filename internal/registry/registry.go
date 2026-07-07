@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +30,22 @@ type Game struct {
 	Descriptors []string
 	HostKey     gossh.PublicKey // nil = unpinned (accept any on the private net)
 	Order       int
+	Version     string // fleet scheme <channel>.<major>.<minor>; "" = unversioned
+}
+
+// Channel names the release channel a fleet version string belongs to.
+// The scheme is <channel>.<major>.<minor>: the leading number is the
+// channel (1 = alpha, 2 = beta), the second is the major release, and the
+// third is the minor patch/hotfix. Unknown channels and unversioned games
+// return "".
+func Channel(version string) string {
+	switch {
+	case strings.HasPrefix(version, "1."):
+		return "alpha"
+	case strings.HasPrefix(version, "2."):
+		return "beta"
+	}
+	return ""
 }
 
 // GameStatus is a Game plus its probed liveness.
@@ -298,6 +315,7 @@ type fileGame struct {
 	Addr        string   `toml:"addr"`
 	HostKey     string   `toml:"host_key"`
 	Order       int      `toml:"order"`
+	Version     string   `toml:"version"`
 }
 
 type fileRoot struct {
@@ -305,6 +323,12 @@ type fileRoot struct {
 }
 
 var idPattern = regexp.MustCompile(`^[a-z0-9-]{1,24}$`)
+
+// versionPattern enforces the fleet scheme <channel>.<major>.<minor> (see
+// Channel). Optional per entry — an omitted version renders as unversioned
+// rather than rejecting a registry, so a router upgrade never bricks on a
+// hand-maintained production file — but a present one must be well-formed.
+var versionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 func loadFile(path string) ([]Game, time.Time, error) {
 	// Stat before read: if a write races the read, the recorded mtime
@@ -356,6 +380,9 @@ func validate(entries []fileGame) ([]Game, error) {
 		if _, _, err := net.SplitHostPort(e.Addr); err != nil {
 			return nil, fmt.Errorf("games[%d] (%s): addr %q: %w", i, e.ID, e.Addr, err)
 		}
+		if e.Version != "" && !versionPattern.MatchString(e.Version) {
+			return nil, fmt.Errorf("games[%d] (%s): version %q must match <channel>.<major>.<minor> (e.g. 1.0.0 alpha, 2.0.0 beta)", i, e.ID, e.Version)
+		}
 		g := Game{
 			ID:          e.ID,
 			Name:        e.Name,
@@ -363,6 +390,7 @@ func validate(entries []fileGame) ([]Game, error) {
 			Addr:        e.Addr,
 			Descriptors: append([]string(nil), e.Descriptors...),
 			Order:       e.Order,
+			Version:     e.Version,
 		}
 		if e.HostKey != "" {
 			key, _, _, _, err := gossh.ParseAuthorizedKey([]byte(e.HostKey))

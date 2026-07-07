@@ -31,6 +31,7 @@ addr    = "moonminer:22"              # private-network host:port
 host_key = ""                         # optional: pinned public key (authorized_keys
                                       # format). Empty = accept any (isolated net).
 order   = 10                          # menu sort, ascending
+version = "1.0.0"                     # optional: fleet version scheme (below)
 
 [[games]]
 id      = "idlefarmer"
@@ -39,12 +40,30 @@ tagline = "Crops grow while you're away."
 descriptors = ["idle", "prestige", "market"]
 addr    = "idlefarmer:22"
 order   = 20
+version = "2.0.0"
 ```
 
 Validation at load: unique ids, non-empty name/addr, parseable host_key
-when set, ≥ 1 game. A file that fails validation is **rejected as a whole**
-and the previous good registry stays active (log an error); at boot with no
-good registry, exit non-zero.
+when set, well-formed version when set, ≥ 1 game. A file that fails
+validation is **rejected as a whole** and the previous good registry stays
+active (log an error); at boot with no good registry, exit non-zero.
+
+### Fleet version scheme
+
+Every fleet component versions as `<channel>.<major>.<minor>`:
+
+- the **first** number is the release channel — `1.x.y` = alpha, `2.x.y` = beta
+- the **second** number (`x`) is the major release
+- the **third** number (`y`) is the minor patch / hotfix
+
+`version` here is registry metadata for the lobby menu (rendered as e.g.
+`v2.0.0 beta` after the descriptors); each game also pins the same string
+in its own code (an `internal/version` const shown on its help screen), and
+the router pins its own in `internal/version`. The registry can't enforce
+that a game's binary agrees with its games.toml entry — keeping the two in
+sync is part of shipping a game release. The key is optional so a router
+upgrade never hard-fails at boot on an older hand-maintained production
+file, but a malformed value rejects the file like any other field.
 
 ### Hot reload
 

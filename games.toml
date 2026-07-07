@@ -12,6 +12,9 @@ addr    = "moonminer:22"              # private-network host:port
 host_key = ""                         # optional: pinned public key (authorized_keys
                                       # format). Empty = accept any (isolated net).
 order   = 10
+version = "1.0.0"                     # fleet scheme <channel>.<major>.<minor>:
+                                      # 1.x.y = alpha, 2.x.y = beta; x major, y patch.
+                                      # Optional — omit for unversioned entries.
 
 [[games]]
 id      = "idlefarmer"

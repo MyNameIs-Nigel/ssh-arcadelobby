@@ -83,6 +83,47 @@ func TestLoadValidFileSortsByOrder(t *testing.T) {
 	}
 }
 
+func TestVersionLoadsAndIsOptional(t *testing.T) {
+	r, _ := newTestRegistry(t, `
+[[games]]
+id = "versioned"
+name = "VERSIONED"
+addr = "v:22"
+order = 10
+version = "2.1.3"
+
+[[games]]
+id = "unversioned"
+name = "UNVERSIONED"
+addr = "u:22"
+order = 20
+`, Options{})
+	games := r.Games()
+	if games[0].Version != "2.1.3" {
+		t.Fatalf("version not loaded: %+v", games[0])
+	}
+	if games[1].Version != "" {
+		t.Fatalf("omitted version must stay empty: %+v", games[1])
+	}
+}
+
+func TestChannel(t *testing.T) {
+	cases := []struct{ version, want string }{
+		{"1.0.0", "alpha"},
+		{"1.4.2", "alpha"},
+		{"2.0.0", "beta"},
+		{"2.10.1", "beta"},
+		{"3.0.0", ""}, // no channel defined yet past beta
+		{"", ""},
+		{"10.0.0", ""}, // channel is the whole leading number, not its first digit
+	}
+	for _, tc := range cases {
+		if got := Channel(tc.version); got != tc.want {
+			t.Errorf("Channel(%q) = %q, want %q", tc.version, got, tc.want)
+		}
+	}
+}
+
 func TestValidationRejects(t *testing.T) {
 	cases := []struct {
 		name string
@@ -98,6 +139,9 @@ func TestValidationRejects(t *testing.T) {
 		{"empty addr", "[[games]]\nid = \"x\"\nname = \"X\"\naddr = \"\"\n"},
 		{"addr without port", "[[games]]\nid = \"x\"\nname = \"X\"\naddr = \"gamehost\"\n"},
 		{"bad host_key", "[[games]]\nid = \"x\"\nname = \"X\"\naddr = \"x:22\"\nhost_key = \"not a key\"\n"},
+		{"version not three parts", "[[games]]\nid = \"x\"\nname = \"X\"\naddr = \"x:22\"\nversion = \"1.0\"\n"},
+		{"version with prefix", "[[games]]\nid = \"x\"\nname = \"X\"\naddr = \"x:22\"\nversion = \"v1.0.0\"\n"},
+		{"version non-numeric", "[[games]]\nid = \"x\"\nname = \"X\"\naddr = \"x:22\"\nversion = \"beta.0.0\"\n"},
 		{"toml syntax", "[[games]\nid = \"x\"\n"},
 	}
 	for _, tc := range cases {

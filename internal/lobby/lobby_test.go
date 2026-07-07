@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/version"
 )
 
 type fakeSource struct {
@@ -187,6 +188,34 @@ func TestAboutOverlayCapturesInput(t *testing.T) {
 	}
 	if f.model.cursor != 0 {
 		t.Fatal("overlay leaked the key to the menu")
+	}
+}
+
+func TestMenuShowsGameVersionWithChannel(t *testing.T) {
+	src := &fakeSource{games: []registry.GameStatus{
+		{Game: registry.Game{ID: "moon", Name: "MOON MINER", Tagline: "Drill.", Descriptors: []string{"x"}, Version: "1.0.0"}, Online: true},
+		{Game: registry.Game{ID: "farm", Name: "IDLE FARMER", Tagline: "Grow.", Descriptors: []string{"y"}, Version: "2.0.0"}, Online: true},
+		{Game: registry.Game{ID: "derby", Name: "PACKET DERBY", Tagline: "Soon.", Descriptors: []string{"z"}}, Online: false},
+	}}
+	f := newFixture(t, src)
+	view := renderPlain(f.model)
+	if !strings.Contains(view, "v1.0.0 alpha") {
+		t.Fatal("alpha game version not rendered")
+	}
+	if !strings.Contains(view, "v2.0.0 beta") {
+		t.Fatal("beta game version not rendered")
+	}
+	if strings.Contains(view, "z · v") {
+		t.Fatal("unversioned game grew a version label")
+	}
+}
+
+func TestAboutShowsRouterVersion(t *testing.T) {
+	f := newFixture(t, twoGames())
+	f.press(t, "?")
+	view := renderPlain(f.model)
+	if !strings.Contains(view, "router v"+version.Version+" ("+version.Channel+")") {
+		t.Fatal("router version not rendered on about screen")
 	}
 }
 

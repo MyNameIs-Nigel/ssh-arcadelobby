@@ -6,6 +6,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/version"
 )
 
 const (
@@ -137,6 +140,13 @@ func (m Model) fillMenu(content []string, ox, oy int) {
 		nameLine := strings.Repeat(" ", rowIndent) + cursor + dot + name + " " + tagStyle.Render(fit(tagline, tagWidth))
 
 		desc := strings.Join(g.Descriptors, " · ")
+		if v := versionLabel(g.Version); v != "" {
+			if desc == "" {
+				desc = v
+			} else {
+				desc += " · " + v
+			}
+		}
 		descStyle := styleDesc
 		if !g.Online {
 			descStyle = styleOffline
@@ -173,6 +183,19 @@ func (m Model) fillMenu(content []string, ox, oy int) {
 	}
 }
 
+// versionLabel formats a registry version for the menu: "v2.0.0 beta".
+// Unversioned games get no label at all.
+func versionLabel(v string) string {
+	if v == "" {
+		return ""
+	}
+	label := "v" + v
+	if ch := registry.Channel(v); ch != "" {
+		label += " " + ch
+	}
+	return label
+}
+
 // scrollOffset keeps the cursor visible when more games exist than fit.
 func (m Model) scrollOffset() int {
 	if len(m.games) <= maxVisible {
@@ -191,6 +214,7 @@ func (m Model) scrollOffset() int {
 var aboutLines = []string{
 	"",
 	"ABOUT SSHARCADE",
+	"router v" + version.Version + " (" + version.Channel + ")",
 	"",
 	"One address, every game:  ssh " + hostLabel,
 	"",
