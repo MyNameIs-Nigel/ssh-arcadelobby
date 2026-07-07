@@ -42,32 +42,17 @@ jobs:
 
   deploy:
     needs: publish
-    runs-on: ubuntu-latest
+    # Runs directly on the play.ssharcade.dev EC2 host (self-hosted runner
+    # installed there, see deploy/README.md) instead of dialing out over
+    # SSH: the host's real sshd (port 9922) is locked to one dev IP, and
+    # GitHub-hosted runners use ephemeral IPs from a huge, ever-changing
+    # range that will never match that allowlist. Running the job on the
+    # box itself means no inbound port has to be opened for CI at all.
+    runs-on: [self-hosted, production]
     environment: production
     steps:
-      # Deliberately gated, not just by the `production` environment (add a
-      # required-reviewer protection rule there once this is real) but also
-      # by this check: until DEPLOY_HOST is configured, every merge to main
-      # would otherwise fail this job loudly with a confusing SSH error.
-      # Skipping cleanly here means the workflow can ship today and start
-      # actually deploying the moment the environment's secrets are set —
-      # no code change needed.
-      - name: Check deploy is configured
-        id: check
+      - name: Deploy router
         run: |
-          if [ -z "${{ vars.DEPLOY_HOST }}" ]; then
-            echo "::notice::DEPLOY_HOST not set for the production environment — skipping deploy. See deploy/README.md."
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.check.outputs.configured == 'true'
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ vars.DEPLOY_HOST }}
-          username: deploy
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            cd /srv/ssharcade
-            docker compose pull router
-            docker compose up -d router
+          cd /srv/ssharcade
+          docker compose pull router
+          docker compose up -d router

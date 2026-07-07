@@ -115,13 +115,25 @@ router's secret, restart router, remove old public key.
   1. run the same tests (never deploy untested merges),
   2. `docker/build-push-action` → `ghcr.io/mynameis-nigel/ssh-arcadelobby`
      tagged `latest` + `sha-<short>`,
-  3. deploy job (environment-gated): SSH to the host (deploy key in
-     `secrets.DEPLOY_SSH_KEY`, host in `vars.DEPLOY_HOST`) and run
+  3. deploy job (environment-gated, `runs-on: [self-hosted, production]`):
+     runs directly on the `play.ssharcade.dev` host itself and does
      `docker compose -f /srv/ssharcade/docker-compose.yml pull router && docker compose -f /srv/ssharcade/docker-compose.yml up -d router`.
+
+The deploy job runs **on the host, not over SSH from a GitHub-hosted
+runner**. The host's real sshd is deliberately locked to one dev IP, and
+GitHub-hosted runners come from a huge, ever-changing IP range that will
+never match that allowlist — an `appleboy/ssh-action`-style job would just
+time out. Installing the runner as a service on the box instead means no
+inbound port ever has to be opened for CI. See "Self-hosted runner setup"
+in `deploy/README.md` for the one-time bootstrap.
 
 ### Per-game workflow (template — each game repo copies this)
 
-Identical `ci.yml`; `release.yml` differs only in image name and service:
+Identical `ci.yml`; `release.yml` differs only in image name and service.
+Each game repo needs its own runner registration on the host (GitHub's
+free tier has no account-wide runner pool for personal accounts — every
+repo registers its own): a separate `/opt/actions-runner-<repo>` directory,
+each running as its own systemd service, per `deploy/README.md`.
 
 ```yaml
 # release.yml (game repo)  — test → image → restart ONLY this service
@@ -130,16 +142,14 @@ jobs:
   test:    # vet + build + go test -race ./...
   publish: # needs: test → ghcr.io/mynameis-nigel/<repo>:latest + sha
   deploy:  # needs: publish
+    runs-on: [self-hosted, production]
+    environment: production
     steps:
-      - uses: appleboy/ssh-action@<pinned>
-        with:
-          host: ${{ vars.DEPLOY_HOST }}
-          username: deploy
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            cd /srv/ssharcade
-            docker compose pull moonminer
-            docker compose up -d moonminer
+      - name: Deploy moonminer
+        run: |
+          cd /srv/ssharcade
+          docker compose pull moonminer
+          docker compose up -d moonminer
 ```
 
 Because of each game's graceful shutdown (SIGTERM → flush saves →

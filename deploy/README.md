@@ -62,6 +62,54 @@ story this stack wires into.
    `docker-compose.yml`. That's expected; the menu shows them `○ OFFLINE`
    rather than breaking anything else (docs/04's acceptance criteria).
 
+## Self-hosted runner setup (one-time per game repo)
+
+Each repo's `release.yml` deploy job runs `runs-on: [self-hosted,
+production]` — directly on this host, not over SSH from a GitHub-hosted
+runner. That's deliberate: this host's real sshd (the dev-access port, not
+22 which is bound to the router container) is locked down to one IP, and
+GitHub-hosted runners come from a huge, ever-changing IP range that would
+never match that allowlist — an SSH-based deploy step would just hang and
+time out. Running the job on the box itself needs no inbound port opened
+for CI at all.
+
+GitHub's free tier has no account-wide runner pool for personal accounts —
+every repo that wants a deploy job needs its **own** runner registered on
+the host. Repeat this for each repo (`ssh-arcadelobby`, `ssh-farm`, and any
+future game repo):
+
+```bash
+# One directory per repo — each runner is its own systemd service.
+sudo mkdir -p /opt/actions-runner-<repo>
+sudo chown "$USER" /opt/actions-runner-<repo>
+cd /opt/actions-runner-<repo>
+
+curl -fsSL -o runner.tar.gz \
+  https://github.com/actions/runner/releases/download/v2.335.1/actions-runner-linux-x64-2.335.1.tar.gz
+tar xzf runner.tar.gz && rm runner.tar.gz
+
+# Amazon Linux 2023 isn't in the runner's own OS-detection list; its ICU
+# dependency has to be installed manually instead of via
+# ./bin/installdependencies.sh.
+sudo dnf install -y libicu
+
+# Get a registration token: GitHub repo → Settings → Actions → Runners →
+# New self-hosted runner (or `gh api -X POST
+# repos/mynameis-nigel/<repo>/actions/runners/registration-token`).
+./config.sh --url https://github.com/mynameis-nigel/<repo> --token <REG_TOKEN> \
+  --unattended --name ec2-deploy --labels self-hosted,ec2,production --work _work
+
+# Installs as a systemd service running as the current user (must be in
+# the docker group already, per "Fresh host bootstrap" step 1).
+sudo ./svc.sh install "$USER"
+sudo ./svc.sh start
+```
+
+No `DEPLOY_HOST` / `DEPLOY_SSH_KEY` secrets are needed with this approach —
+the `environment: production` gate is kept only so a required-reviewer
+protection rule can be added later if desired, not because anything reads
+those vars/secrets anymore.
+
 ## Durability (S3/Litestream)
 
 Uncommented by default — the stack runs in dev mode (no AWS credentials

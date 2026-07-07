@@ -333,6 +333,7 @@ func validate(entries []fileGame) ([]Game, error) {
 		return nil, fmt.Errorf("no [[games]] entries")
 	}
 	seen := make(map[string]bool, len(entries))
+	seenName := make(map[string]bool, len(entries))
 	games := make([]Game, 0, len(entries))
 	for i, e := range entries {
 		if !idPattern.MatchString(e.ID) {
@@ -345,6 +346,10 @@ func validate(entries []fileGame) ([]Game, error) {
 		if e.Name == "" {
 			return nil, fmt.Errorf("games[%d] (%s): name must not be empty", i, e.ID)
 		}
+		if seenName[e.Name] {
+			return nil, fmt.Errorf("games[%d] (%s): duplicate name %q — two menu entries would be visually indistinguishable", i, e.ID, e.Name)
+		}
+		seenName[e.Name] = true
 		if e.Addr == "" {
 			return nil, fmt.Errorf("games[%d] (%s): addr must not be empty", i, e.ID)
 		}

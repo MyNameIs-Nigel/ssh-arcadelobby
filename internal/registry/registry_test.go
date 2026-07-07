@@ -93,6 +93,7 @@ func TestValidationRejects(t *testing.T) {
 		{"bad id chars", "[[games]]\nid = \"Bad_ID\"\nname = \"X\"\naddr = \"x:22\"\n"},
 		{"id too long", "[[games]]\nid = \"" + strings.Repeat("a", 25) + "\"\nname = \"X\"\naddr = \"x:22\"\n"},
 		{"duplicate id", "[[games]]\nid = \"x\"\nname = \"X\"\naddr = \"x:22\"\n[[games]]\nid = \"x\"\nname = \"Y\"\naddr = \"y:22\"\n"},
+		{"duplicate name", "[[games]]\nid = \"x\"\nname = \"X\"\naddr = \"x:22\"\n[[games]]\nid = \"y\"\nname = \"X\"\naddr = \"y:22\"\n"},
 		{"empty name", "[[games]]\nid = \"x\"\nname = \"\"\naddr = \"x:22\"\n"},
 		{"empty addr", "[[games]]\nid = \"x\"\nname = \"X\"\naddr = \"\"\n"},
 		{"addr without port", "[[games]]\nid = \"x\"\nname = \"X\"\naddr = \"gamehost\"\n"},

@@ -5,9 +5,11 @@
 # repo (vet + build + go test -race ./...) — copy this repo's verbatim.
 #
 # Same shape as this repo's own release.yml: test (never skipped) →
-# publish (needs: test) → deploy (needs: publish, environment-gated, and
-# skips cleanly rather than failing loudly until DEPLOY_HOST is set for
-# the production environment — see deploy/README.md in ssh-arcadelobby).
+# publish (needs: test) → deploy (needs: publish, runs on the host's own
+# self-hosted runner — see "Self-hosted runner setup" in deploy/README.md
+# in ssh-arcadelobby. Every game repo registers its own runner instance on
+# the host; there's no account-wide runner pool on GitHub's free tier for
+# personal accounts).
 name: Release
 
 on:
@@ -52,25 +54,11 @@ jobs:
 
   deploy:
     needs: publish
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, production]
     environment: production
     steps:
-      - name: Check deploy is configured
-        id: check
+      - name: Deploy <service>
         run: |
-          if [ -z "${{ vars.DEPLOY_HOST }}" ]; then
-            echo "::notice::DEPLOY_HOST not set for the production environment — skipping deploy."
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.check.outputs.configured == 'true'
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ vars.DEPLOY_HOST }}
-          username: deploy
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            cd /srv/ssharcade
-            docker compose pull <service>
-            docker compose up -d <service>
+          cd /srv/ssharcade
+          docker compose pull <service>
+          docker compose up -d <service>
