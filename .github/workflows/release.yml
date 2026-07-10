@@ -51,6 +51,14 @@ jobs:
     runs-on: [self-hosted, production]
     environment: production
     steps:
+      - uses: actions/checkout@v4
+      - name: Sync compose + registry config
+        # banner.toml is deliberately excluded: it's operator-edited live on
+        # the host (docs/03's "edit and save, no redeploy" contract) and
+        # must never be clobbered by a code merge.
+        run: |
+          cp docker-compose.yml games.toml /srv/ssharcade/
+        working-directory: deploy
       - name: Deploy router
         run: |
           cd /srv/ssharcade

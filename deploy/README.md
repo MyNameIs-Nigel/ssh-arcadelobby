@@ -24,8 +24,13 @@ story this stack wires into.
    cd /srv/ssharcade
    ```
 
-3. **Copy the deployed files** from this repo (or let the CI rsync step do
-   it later — see docs/04's "Compose changes" section):
+3. **Copy the deployed files** from this repo. `docker-compose.yml` and
+   `games.toml` only need this once — every merge to main re-copies them
+   automatically (`release.yml`'s deploy job, see docs/04's "Compose
+   changes" section). `banner.toml` is different: CI never touches it once
+   it exists on the host, so this manual copy is the *only* time it's
+   seeded — after that, edit `/srv/ssharcade/banner.toml` directly on the
+   host to change the notice (docs/03's "Operator banner").
 
    ```bash
    cp deploy/docker-compose.yml deploy/games.toml deploy/banner.toml /srv/ssharcade/

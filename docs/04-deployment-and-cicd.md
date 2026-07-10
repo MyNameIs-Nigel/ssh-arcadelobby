@@ -163,10 +163,16 @@ with a read-only PAT.
 
 ### Compose changes (adding a game)
 
-The compose file + `games.toml` live in this repo under `deploy/`; a small
-`deploy-config.yml` workflow rsyncs them to `/srv/ssharcade/` on merge to
-main (same SSH deploy mechanism) — `games.toml` hot-reloads, compose
-changes take effect on the next `up -d`.
+The compose file + `games.toml` live in this repo under `deploy/`; the
+`release.yml` deploy job's "Sync compose + registry config" step (it runs
+directly on the host, per the self-hosted-runner note above, so this is a
+plain `cp`, not a network rsync) copies both to `/srv/ssharcade/` on every
+merge to main, before `docker compose up -d router` — `games.toml`
+hot-reloads, compose changes take effect on that same `up -d`.
+`deploy/banner.toml` is deliberately **not** synced this way: it's an
+operator notice meant to be edited directly on the host without a code
+deploy (see doc 03's "Operator banner"), so CI never touches
+`/srv/ssharcade/banner.toml` once it exists.
 
 ## Cost sanity check (the reason this architecture exists)
 
