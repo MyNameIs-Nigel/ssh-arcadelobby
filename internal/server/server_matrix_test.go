@@ -164,10 +164,10 @@ func TestArrowKeySelectsAndBridges(t *testing.T) {
 		return 0
 	})
 	_, reg, addr := testArcade(t, map[string]string{
-		"alpha": fake.Addr,
-		"beta":  "127.0.0.1:1",
+		"alpha": "127.0.0.1:1",
+		"beta":  fake.Addr,
 	}, nil)
-	waitOnline(t, reg, "alpha")
+	waitOnline(t, reg, "beta")
 
 	p := dialPlayer(t, addr, "alice", testSigner(t))
 	waitContains(t, p, "ALPHA GAME")
