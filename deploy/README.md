@@ -27,13 +27,19 @@ story this stack wires into.
 3. **Copy the deployed files** from this repo. `docker-compose.yml` and
    `games.toml` only need this once — every merge to main re-copies them
    automatically (`release.yml`'s deploy job, see docs/04's "Compose
-   changes" section). `banner.toml` is different: CI never touches it once
-   it exists on the host, so this manual copy is the *only* time it's
-   seeded — after that, edit `/srv/ssharcade/banner.toml` directly on the
-   host to change the notice (docs/03's "Operator banner").
+   changes" section). `banner/banner.toml` is different: CI never touches
+   it once it exists on the host, so this manual copy is the *only* time
+   it's seeded — after that, edit `/srv/ssharcade/banner/banner.toml`
+   directly on the host to change the notice (docs/03's "Operator banner").
+   It's mounted as a directory, not a single file, so any write pattern
+   (editor save, `scp`, the operator script) is safe — a single-file mount
+   would pin to the inode present at container start and silently go stale
+   the moment the file is replaced instead of truncated in place.
 
    ```bash
-   cp deploy/docker-compose.yml deploy/games.toml deploy/banner.toml /srv/ssharcade/
+   cp deploy/docker-compose.yml deploy/games.toml /srv/ssharcade/
+   mkdir -p /srv/ssharcade/banner
+   cp deploy/banner/banner.toml /srv/ssharcade/banner/
    ```
 
 4. **Provision secrets** (one-time per host — the proxy key is never

@@ -169,10 +169,15 @@ directly on the host, per the self-hosted-runner note above, so this is a
 plain `cp`, not a network rsync) copies both to `/srv/ssharcade/` on every
 merge to main, before `docker compose up -d router` — `games.toml`
 hot-reloads, compose changes take effect on that same `up -d`.
-`deploy/banner.toml` is deliberately **not** synced this way: it's an
+`deploy/banner/banner.toml` is deliberately **not** synced this way: it's an
 operator notice meant to be edited directly on the host without a code
 deploy (see doc 03's "Operator banner"), so CI never touches
-`/srv/ssharcade/banner.toml` once it exists.
+`/srv/ssharcade/banner/banner.toml` once it exists. The directory
+(`./banner:/etc/arcade/banner:ro`) is bind-mounted rather than the file
+itself — a single-file mount pins to the inode present at container start,
+so any edit that replaces the file instead of truncating it in place (an
+editor's atomic save, `scp`, `mv`) silently orphans the mount until the
+container is recreated.
 
 ## Cost sanity check (the reason this architecture exists)
 

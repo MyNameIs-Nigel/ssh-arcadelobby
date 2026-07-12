@@ -28,7 +28,7 @@ services:
       ARCADE_HOST_KEY_PATH: /var/lib/arcade/ssh_host_key
       ARCADE_PROXY_KEY_PATH: /run/secrets/proxy_key
       ARCADE_GAMES_PATH: /etc/arcade/games.toml
-      ARCADE_BANNER_PATH: /etc/arcade/banner.toml
+      ARCADE_BANNER_PATH: /etc/arcade/banner/banner.toml
       ARCADE_DB_PATH: /var/lib/arcade/arcade.db
       # Durability (doc 06): router SQLite + two small key objects.
       # Leave unset for dev mode (see entrypoint.sh).
@@ -46,7 +46,14 @@ services:
     volumes:
       - arcade-router-data:/var/lib/arcade
       - ./games.toml:/etc/arcade/games.toml:ro
-      - ./banner.toml:/etc/arcade/banner.toml:ro
+      # Directory mount, not a single-file mount: a single-file bind mount
+      # pins to the inode present at container start. Any host-side edit
+      # that replaces rather than truncates the file (editors with
+      # atomic-save/rename, scp, mv) silently orphans the mount — the
+      # container keeps serving the old content forever, no error, no log,
+      # until the container is recreated. Directory mounts resolve the path
+      # dynamically and survive any write pattern.
+      - ./banner:/etc/arcade/banner:ro
     secrets: [proxy_key]
     networks: [ssharcade]
     restart: unless-stopped
