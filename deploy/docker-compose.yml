@@ -32,15 +32,17 @@ services:
       ARCADE_DB_PATH: /var/lib/arcade/arcade.db
       # Durability (doc 06): router SQLite + two small key objects.
       # Leave unset for dev mode (see entrypoint.sh).
-      # LITESTREAM_REPLICA_URL: s3://<bucket>/router/db
-      # LITESTREAM_S3_REGION: us-east-1
-      # ARCADE_HOST_KEY_MC_PATH: s3/<bucket>/keys/router/ssh_host_key
-      # ARCADE_PROXY_KEY_MC_PATH: s3/<bucket>/keys/router/proxy_key
-      # MC_HOST_s3: https://<access-key>:<secret-key>@s3.amazonaws.com
+      LITESTREAM_REPLICA_URL: s3://ssharcade-snoigel-data/router/db
+      LITESTREAM_S3_REGION: us-east-1
+      ARCADE_HOST_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/router/ssh_host_key
+      ARCADE_PROXY_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/router/proxy_key
+      MC_HOST_s3: ${MC_HOST_s3}
       # mc has no EC2-instance-role support, so MC_HOST_s3 needs an explicit
       # key pair scoped to the same bucket-only IAM policy as litestream's
       # instance role (see doc 06) — litestream itself needs no keys here
-      # at all since the router doesn't use it.
+      # at all since the router doesn't use it. Sourced from a host-side
+      # /srv/ssharcade/.env (never committed) via compose variable
+      # substitution — never write a literal key pair into this file.
     volumes:
       - arcade-router-data:/var/lib/arcade
       - ./games.toml:/etc/arcade/games.toml:ro
@@ -75,10 +77,10 @@ services:
       # router's secrets provisioning generates (deploy/README.md).
       FARM_PROXY_KEYS_PATH: /etc/farm/proxy_keys
       # Durability (doc 06 — canonical; leave unset for dev mode):
-      # LITESTREAM_REPLICA_URL: s3://<bucket>/farm/db
-      # LITESTREAM_S3_REGION: us-east-1
-      # FARM_HOST_KEY_MC_PATH: s3/<bucket>/keys/farm/ssh_host_key
-      # MC_HOST_s3: https://<access-key>:<secret-key>@s3.amazonaws.com
+      LITESTREAM_REPLICA_URL: s3://ssharcade-snoigel-data/farm/db
+      LITESTREAM_S3_REGION: us-east-1
+      FARM_HOST_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/farm/ssh_host_key
+      MC_HOST_s3: ${MC_HOST_s3}
       # AWS credentials for litestream come from the EC2 instance role —
       # never set LITESTREAM_ACCESS_KEY_ID/SECRET in this file.
     volumes:
@@ -105,11 +107,11 @@ services:
       MOONMINER_HOST_KEY_PATH: /var/lib/moonminer/ssh_host_key
       MOONMINER_PROXY_KEYS_PATH: /etc/moonminer/proxy_keys
       MOONMINER_RATE_LIMIT_PER_SECOND: "50"
-      # Durability — same shape as farm's, once its Dockerfile adopts doc 06:
-      # LITESTREAM_REPLICA_URL: s3://<bucket>/moonminer/db
-      # LITESTREAM_S3_REGION: us-east-1
-      # MOONMINER_HOST_KEY_MC_PATH: s3/<bucket>/keys/moonminer/ssh_host_key
-      # MC_HOST_s3: https://<access-key>:<secret-key>@s3.amazonaws.com
+      # Durability — same shape as farm's:
+      LITESTREAM_REPLICA_URL: s3://ssharcade-snoigel-data/moonminer/db
+      LITESTREAM_S3_REGION: us-east-1
+      MOONMINER_HOST_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/moonminer/ssh_host_key
+      MC_HOST_s3: ${MC_HOST_s3}
     volumes:
       - moonminer-data:/var/lib/moonminer
       - ./proxy_keys:/etc/moonminer/proxy_keys:ro # PUBLIC half(s) of proxy key
