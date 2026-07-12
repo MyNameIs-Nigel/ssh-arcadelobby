@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -35,12 +36,18 @@ func testArcade(t *testing.T, games map[string]string, mutate func(*config.Confi
 	t.Helper()
 	dir := t.TempDir()
 
+	ids := make([]string, 0, len(games))
+	for id := range games {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
 	var toml string
 	order := 0
-	for id, addr := range games {
+	for _, id := range ids {
 		order += 10
 		toml += fmt.Sprintf("[[games]]\nid = %q\nname = %q\ntagline = \"Tag for %s.\"\naddr = %q\norder = %d\n\n",
-			id, strings.ToUpper(id)+" GAME", id, addr, order)
+			id, strings.ToUpper(id)+" GAME", id, games[id], order)
 	}
 	gamesPath := filepath.Join(dir, "games.toml")
 	if err := os.WriteFile(gamesPath, []byte(toml), 0o644); err != nil {
