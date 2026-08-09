@@ -33,11 +33,20 @@ order   = 20
 # version: live-detected, same as farm above.
 
 [[games]]
-id      = "packetderby"
-name    = "PACKET DERBY"
-tagline = "Coming soon..."
-descriptors = ["racing","multiplayer"]
-addr    = "packetderby:2222"
+id      = "chess"
+name    = "GAMBIT"
+tagline = "Bots or humans. Real clocks."
+descriptors = ["chess", "strategy", "multiplayer"]
+addr    = "chess:2222"
 host_key = ""
 order   = 30
-version = "1.0.0"
+# Listed ahead of its first deploy on purpose: there is no `chess` service in
+# docker-compose.yml yet, so the prober can't reach chess:2222 and the menu
+# renders `○ GAMBIT OFFLINE` — the documented behaviour for an entry whose
+# container isn't up (see this file's header and docs/03). The compose
+# service, the chess-data volume and the release.yml that makes it reachable
+# all land in ../../ssh-chess/docs/phase2/06-deployment-and-fleet-onboarding.md.
+#
+# No `version` key: GAMBIT embeds its version in its SSH banner from its first
+# commit, so the prober reads it live once the service exists. This retires the
+# last static `version` in the fleet registry.
