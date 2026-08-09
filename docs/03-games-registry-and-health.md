@@ -16,8 +16,14 @@ bridge dials from it.
   `prober.go`, tests
 - `internal/banner/` — `banner.go` (load/validate/hot-reload for notices)
 - `internal/store/` — router SQLite (accounts, alpha-warning acks)
-- `games.toml` — checked-in default (dev), overridden by a mounted file in
-  production (`ARCADE_GAMES_PATH`)
+- Three registry files, only one of which reaches players:
+  - `deploy/games.toml` — **production**. Synced to the host by
+    `release.yml` on every push to main, mounted at `/etc/arcade/games.toml`.
+    Change the live menu here and nowhere else.
+  - `games.local.toml` — the local fleet; `scripts/dev-local-fleet.sh` points
+    `ARCADE_GAMES_PATH` at it.
+  - `games.dev.toml` — checked-in default when `ARCADE_GAMES_PATH` is unset.
+    Never deployed.
 - `banner.toml` — operator notice default (dev), mounted in production
   (`ARCADE_BANNER_PATH`)
 

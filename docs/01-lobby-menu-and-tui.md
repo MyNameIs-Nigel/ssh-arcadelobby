@@ -115,7 +115,7 @@ for {
 | `ARCADE_LISTEN_HOST` / `ARCADE_LISTEN_PORT` | `0.0.0.0` / `22` | public bind |
 | `ARCADE_HOST_KEY_PATH` | `var/ssh_host_key` | server identity |
 | `ARCADE_PROXY_KEY_PATH` | `var/proxy_key` | bridge client key (doc 02) |
-| `ARCADE_GAMES_PATH` | `games.toml` | registry file (doc 03) |
+| `ARCADE_GAMES_PATH` | `games.dev.toml` | registry file (doc 03) |
 | `ARCADE_LOBBY_IDLE_TIMEOUT` | `5m` | menu-only idle disconnect |
 | `ARCADE_MAX_CONNECTIONS` / `ARCADE_MAX_SESSIONS_PER_KEY` | `200` / `4` | caps |
 | `ARCADE_RATE_LIMIT_*` | as idlefarmer | per-IP throttling |

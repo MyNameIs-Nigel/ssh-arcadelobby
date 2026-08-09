@@ -1,11 +1,16 @@
-# Local fleet registry — farm on loopback for dev-local-fleet.sh
-# Production uses games.toml with Docker DNS names.
+# Local fleet registry — games on loopback for scripts/dev-local-fleet.sh,
+# which points ARCADE_GAMES_PATH here explicitly.
+#
+# ids/names mirror deploy/games.toml (the production registry) so the local
+# menu renders exactly what players see; only the addrs differ, loopback
+# ports here vs Docker DNS names there. Editing this file changes nothing
+# in production — that is deploy/games.toml, synced by CI on push to main.
 
 [[games]]
-id      = "idlefarm"
-name    = "IDLE FARM"
+id      = "farm"
+name    = "IDLE FARMER"
 tagline = "Crops grow while you're away."
-descriptors = ["idle", "prestige", "market"]
+descriptors = ["idle", "prestige", "market", "leaderboard"]
 addr    = "127.0.0.1:2223"
 order   = 10
 # version: live-detected from the SSH banner, not set here (see docs/03).
@@ -17,7 +22,7 @@ tagline = "Drill asteroids, dodge pirates."
 descriptors = ["extraction", "4 worlds", "push-your-luck"]
 addr    = "127.0.0.1:2224"
 order   = 20
-# version: live-detected, same as idlefarm above.
+# version: live-detected, same as farm above.
 
 [[games]]
 id      = "chess"

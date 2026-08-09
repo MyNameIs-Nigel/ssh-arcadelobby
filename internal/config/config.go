@@ -37,7 +37,7 @@ func Load() (Config, error) {
 		ListenHost:   envOr("ARCADE_LISTEN_HOST", "0.0.0.0"),
 		HostKeyPath:  envOr("ARCADE_HOST_KEY_PATH", "var/ssh_host_key"),
 		ProxyKeyPath: envOr("ARCADE_PROXY_KEY_PATH", "var/proxy_key"),
-		GamesPath:    envOr("ARCADE_GAMES_PATH", "games.toml"),
+		GamesPath:    envOr("ARCADE_GAMES_PATH", "games.dev.toml"),
 		BannerPath:   envOr("ARCADE_BANNER_PATH", "banner.toml"),
 		DBPath:       envOr("ARCADE_DB_PATH", "var/arcade.db"),
 		LogLevel:     envOr("ARCADE_LOG_LEVEL", "info"),

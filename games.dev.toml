@@ -1,0 +1,50 @@
+# ssharcade games registry — dev default (ARCADE_GAMES_PATH's fallback when
+# nothing sets it). This file is NEVER deployed.
+#
+# The three registries and who reads each:
+#   deploy/games.toml  PRODUCTION. Synced to /srv/ssharcade/games.toml by
+#                      .github/workflows/release.yml on every push to main,
+#                      mounted read-only at /etc/arcade/games.toml. This is
+#                      the only file that changes what players see.
+#   games.local.toml   The local fleet — scripts/dev-local-fleet.sh sets
+#                      ARCADE_GAMES_PATH to it explicitly (loopback addrs).
+#   games.dev.toml     This file. Bare `go run ./cmd/ssh-arcadelobby` with no
+#                      ARCADE_GAMES_PATH set. Mirrors production's shape so
+#                      the fallback is realistic, but edits here reach nobody.
+#
+# Schema: docs/03-games-registry-and-health.md
+
+[[games]]
+id      = "farm"                      # stable key: [a-z0-9-]{1,24}, unique
+name    = "IDLE FARMER"               # menu display
+tagline = "Crops grow while you're away."
+descriptors = ["idle", "prestige", "market", "leaderboard"]
+addr    = "farm:2222"                 # private-network host:port
+host_key = ""                         # optional: pinned public key (authorized_keys
+                                      # format). Empty = accept any (isolated net).
+order   = 10
+# No `version` here: farm's wish server embeds its internal/version const in
+# its SSH banner, live-detected by the health-check prober every probe cycle
+# (docs/03's "Fleet version scheme") — no registry edit when a version bumps.
+
+[[games]]
+id      = "moonminer"
+name    = "MOON MINER"
+tagline = "Drill asteroids, dodge pirates."
+descriptors = ["extraction", "4 worlds", "push-your-luck"]
+addr    = "moonminer:2222"
+host_key = ""
+order   = 20
+# version: live-detected, same as farm above.
+
+[[games]]
+id      = "chess"
+name    = "GAMBIT"
+tagline = "Bots or humans. Real clocks."
+descriptors = ["chess", "strategy", "multiplayer"]
+addr    = "chess:2222"
+host_key = ""
+order   = 30
+# version: live-detected, same as the others above. Not in deploy/games.toml
+# yet — the production swap lands with the compose service in ssh-chess's
+# docs/phase2/06-deployment-and-fleet-onboarding.md.
