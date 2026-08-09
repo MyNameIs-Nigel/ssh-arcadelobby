@@ -68,10 +68,11 @@ story this stack wires into.
    ssh -p 22 <host>        # menu should appear
    ```
 
-   `idlefarmer` will fail to bridge identity correctly (it predates the
-   trusted-proxy retrofit) — see the readiness notes at the top of
-   `docker-compose.yml`. That's expected; the menu shows it `○ OFFLINE`
-   rather than breaking anything else (docs/04's acceptance criteria).
+   The menu also lists `PACKET DERBY`, a placeholder with no container
+   behind it, so it shows `○ OFFLINE`. That's expected — an entry whose
+   service isn't up degrades to OFFLINE rather than breaking anything
+   (docs/04's acceptance criteria). It is replaced by GAMBIT in
+   `../../ssh-chess/docs/phase2/06-deployment-and-fleet-onboarding.md`.
 
 ## Self-hosted runner setup (one-time per game repo)
 
@@ -221,7 +222,7 @@ docker compose up -d farm    # only this service restarts; others unaffected
 ```bash
 ssh-keygen -t ed25519 -N "" -f secrets/proxy_key.new -C "ssharcade-router"
 cat secrets/proxy_key.new.pub >> proxy_keys   # append, don't replace yet
-docker compose restart moonminer idlefarmer   # (once they trust proxy_keys)
+docker compose restart farm moonminer         # every game that trusts proxy_keys
 mv secrets/proxy_key.new secrets/proxy_key
 docker compose restart router
 # once confident, remove the old public key line from proxy_keys and
