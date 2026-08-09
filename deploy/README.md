@@ -64,15 +64,20 @@ story this stack wires into.
 
    ```bash
    docker compose up -d
-   docker compose ps       # router, farm, moonminer should all be Up
+   docker compose ps       # router, farm, moonminer, chess should all be Up
    ssh -p 22 <host>        # menu should appear
    ```
 
-   The menu also lists `PACKET DERBY`, a placeholder with no container
-   behind it, so it shows `○ OFFLINE`. That's expected — an entry whose
-   service isn't up degrades to OFFLINE rather than breaking anything
-   (docs/04's acceptance criteria). It is replaced by GAMBIT in
-   `../../ssh-chess/docs/phase2/06-deployment-and-fleet-onboarding.md`.
+   `chess` (GAMBIT) is the newest service and the one most likely to be
+   down on a first boot, because it cannot start until its image exists at
+   `ghcr.io/mynameis-nigel/ssh-chess` — published the first time
+   `ssh-chess`'s `main` runs its `release.yml`. Until then the menu shows
+   `○ GAMBIT OFFLINE`, which is the designed behaviour for an entry whose
+   service isn't up rather than a fault (docs/04's acceptance criteria).
+
+   GAMBIT is channel `alpha` (`1.x.y`), so the lobby shows its one-time
+   alpha-warning overlay before bridging. That is expected until the Phase 3
+   beta cutover.
 
 ## Self-hosted runner setup (one-time per game repo)
 
@@ -191,9 +196,9 @@ required) until you provision a bucket. One-time setup (docs/06):
    }
    ```
 
-4. Uncomment the `LITESTREAM_*`/`*_MC_PATH`/`MC_HOST_s3` lines for `farm`
-   and `moonminer` (and `router`, for its own `keys/router/` backup) with
-   your real bucket name, then `docker compose up -d`.
+4. Uncomment the `LITESTREAM_*`/`*_MC_PATH`/`MC_HOST_s3` lines for `farm`,
+   `moonminer` and `chess` (and `router`, for its own `keys/router/` backup)
+   with your real bucket name, then `docker compose up -d`.
 
 Restore/kill drills for this stack are `ssh-farm`'s
 `scripts/restore-drill/` (`kill-drill.sh`, `restore-to-scratch.sh`,
@@ -222,7 +227,7 @@ docker compose up -d farm    # only this service restarts; others unaffected
 ```bash
 ssh-keygen -t ed25519 -N "" -f secrets/proxy_key.new -C "ssharcade-router"
 cat secrets/proxy_key.new.pub >> proxy_keys   # append, don't replace yet
-docker compose restart farm moonminer         # every game that trusts proxy_keys
+docker compose restart farm moonminer chess   # every game that trusts proxy_keys
 mv secrets/proxy_key.new secrets/proxy_key
 docker compose restart router
 # once confident, remove the old public key line from proxy_keys and

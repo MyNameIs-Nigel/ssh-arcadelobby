@@ -49,7 +49,7 @@ is the canonical contract every game repo implements against.
 | `ssh-arcadelobby` | this — router, lobby TUI, arcade compose + deploy docs, fleet durability pattern |
 | `ssh-farm` | game (private repo): Idle Farmer v2 — mouse, leaderboards, durable data. **Live** |
 | `ssh-moonminer` | game: asteroid-mining extraction loop. **Live** |
-| `ssh-chess` | game: GAMBIT — chess over SSH. In build; deploys at its `phase2/06` |
+| `ssh-chess` | game: GAMBIT — chess over SSH, server-authoritative clocks, Stockfish bots. Compose service is in `deploy/`; goes live on its first `main` release |
 
 Idle Farmer v1 (`ssh-idlefarmer`) was the fleet's reference implementation
 and was retired at the v2 cutover; its repo is gone and `ssh-farm` carries

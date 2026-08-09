@@ -9,11 +9,23 @@
 #                     polished, but stable enough to go live) with its own
 #                     ci.yml/release.yml + Dockerfile on the same
 #                     Litestream/S3 durability pattern as farm's.
-#   chess (GAMBIT) — not here yet. Its service block, chess-data volume and
-#                     the deploy/games.toml swap off the `packetderby`
-#                     placeholder all land together in ssh-chess's
-#                     docs/phase2/06-deployment-and-fleet-onboarding.md, so
-#                     production never lists a game with no container.
+#   chess (GAMBIT) — service block and chess-data volume are here as of
+#                     ssh-chess's phase2/06. It is the fleet's first
+#                     multiplayer-capable game, though Phase 2 ships
+#                     bot play only (the lobby's MULTIPLAYER item is
+#                     visible and locked until Phase 3).
+#                     Two things differ from its siblings, both on purpose:
+#                     mem_limit is 512m rather than 256m because it runs up
+#                     to four Stockfish processes, and its image is larger
+#                     (~270 MB) because Stockfish embeds its NNUE net — an
+#                     external net file cannot be read from a read-only
+#                     rootfs.
+#                     ORDERING: this service cannot start until the image
+#                     exists at ghcr.io/mynameis-nigel/ssh-chess, which
+#                     happens the first time ssh-chess's `main` runs its
+#                     release.yml. Until then chess pulls nothing and the
+#                     menu shows `○ GAMBIT OFFLINE`, which is the designed
+#                     behaviour for an entry with no container, not a fault.
 #
 # Idle Farmer v1 (`idlefarmer`) was removed at the v2 cutover: its repo is
 # retired and its registry entry went with commit d72d578. ssh-farm is v2 and
@@ -136,6 +148,61 @@ services:
     mem_limit: 256m
     cpus: 1.0
 
+  chess:
+    image: ghcr.io/mynameis-nigel/ssh-chess:latest
+    # NO ports: — private network only; the router is the only way in.
+    environment:
+      CHESS_LISTEN_PORT: "2222"
+      CHESS_DB_PATH: /var/lib/chess/chess.db
+      CHESS_HOST_KEY_PATH: /var/lib/chess/ssh_host_key
+      CHESS_RATE_LIMIT_PER_SECOND: "50" # router does public throttling
+      # The single most important variable not to forget here. Without it
+      # CHESS_PROXY_KEYS_PATH is empty ("direct-only dev" per internal/config),
+      # the router's bridged connections never match a proxy key, and every
+      # player collapses onto ONE identity — the router's own key. In chess
+      # that means one shared handle, one shared record, and one player able
+      # to resume another's game.
+      CHESS_PROXY_KEYS_PATH: /etc/chess/proxy_keys
+      # Engine pool. These two are what mem_limit below is sized for; raise
+      # them together or not at all.
+      CHESS_MAX_ENGINES: "4"
+      CHESS_ENGINE_HASH_MB: "16"
+      # Durability (doc 06 — canonical; leave unset for dev mode). What is
+      # replicated is every unfinished match's move list and clock: a match
+      # *is* its move list, so a restored replica is a playable game rather
+      # than a position someone has to reconstruct.
+      LITESTREAM_REPLICA_URL: s3://ssharcade-snoigel-data/chess/db
+      LITESTREAM_S3_REGION: us-east-1
+      CHESS_HOST_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/chess/ssh_host_key
+      MC_HOST_s3: ${MC_HOST_s3}
+      # AWS credentials for litestream come from the EC2 instance role —
+      # never set LITESTREAM_ACCESS_KEY_ID/SECRET in this file.
+    volumes:
+      - chess-data:/var/lib/chess
+      - ./proxy_keys:/etc/chess/proxy_keys:ro # PUBLIC half of the router's proxy key
+    networks: [ssharcade]
+    restart: unless-stopped
+    # Inherited from its siblings and correct here for one extra reason: on
+    # SIGTERM chess flushes every live match within its 30s budget AND has
+    # Stockfish processes to reap.
+    stop_grace_period: 45s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # 512m, not the fleet's 256m, and this is a deliberate deviation rather
+    # than a copy-paste slip: four Stockfish processes at 16 MB hash each,
+    # plus their own overhead, plus the Go runtime, does not fit in 256m.
+    # If this has to come back down to 256m, drop CHESS_MAX_ENGINES to 2.
+    # Dropping every capability does not stop the game execing Stockfish from
+    # a read-only path — capabilities bound what a process may gain, not what
+    # it may run.
+    mem_limit: 512m
+    cpus: 1.0
+
 networks:
   ssharcade: {}
 
@@ -143,6 +210,7 @@ volumes:
   arcade-router-data: {}
   farm-data: {}
   moonminer-data: {}
+  chess-data: {}
 
 secrets:
   proxy_key:
