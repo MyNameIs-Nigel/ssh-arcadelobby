@@ -4,6 +4,23 @@ on:
   push:
     branches: [main]
 
+# Two merges close together used to race: both runs publish `:latest` and both
+# deploy jobs `cp` their own checkout over /srv/ssharcade, so whichever FINISHES
+# last wins — not whichever commit is newer. On 2026-08-09 PRs #8 and #9 merged
+# 11s apart; #9 (which swapped packetderby for GAMBIT) deployed at 16:34:47 and
+# #8, built from the older commit that predates that swap, overwrote it at
+# 16:34:54. Production silently reverted to the previous registry and `:latest`
+# pointed at the older image, with both runs reporting success.
+#
+# One group for the whole workflow, so at most one release is ever in flight,
+# and cancel-in-progress so a newer merge supersedes an older one rather than
+# queueing behind it and then clobbering it. Superseding is safe here: the
+# deploy is `cp` + `docker compose up -d router`, and a cancelled run is always
+# followed by the newer one doing the same work from a newer tree.
+concurrency:
+  group: release-production
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
