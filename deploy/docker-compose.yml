@@ -3,21 +3,22 @@
 # ssharcade network. Deployed copy lives at /srv/ssharcade/docker-compose.yml
 # on the host (see ../deploy/README.md for the full bootstrap).
 #
-# Readiness today (2026-07):
-#   router, farm, moonminer — real images, real proxy-identity support,
-#                     ready to run. moonminer shipped as a playable prototype
-#                     (not fully polished, but stable enough to go live) with
-#                     its own ci.yml/release.yml + Dockerfile on the same
+# Readiness today (2026-08):
+#   router, farm, moonminer — real images, real proxy-identity support, live.
+#                     moonminer shipped as a playable prototype (not fully
+#                     polished, but stable enough to go live) with its own
+#                     ci.yml/release.yml + Dockerfile on the same
 #                     Litestream/S3 durability pattern as farm's.
-#   idlefarmer     — playable, but its trusted-proxy identity retrofit
-#                     (docs/02-bridge-and-identity-protocol.md) isn't done —
-#                     bridging real player identity through the router won't
-#                     work correctly until that lands. It also predates the
-#                     fleet's Litestream decision (doc 06) and has no S3
-#                     durability wiring of its own yet.
-# idlefarmer is left in so `games.toml`/compose stay one edit away from live
-# once its repo catches up, per this doc's "adding a game touches the
-# compose file and games.toml, never the router binary" goal.
+#   chess (GAMBIT) — not here yet. Its service block, chess-data volume and
+#                     the deploy/games.toml swap off the `packetderby`
+#                     placeholder all land together in ssh-chess's
+#                     docs/phase2/06-deployment-and-fleet-onboarding.md, so
+#                     production never lists a game with no container.
+#
+# Idle Farmer v1 (`idlefarmer`) was removed at the v2 cutover: its repo is
+# retired and its registry entry went with commit d72d578. ssh-farm is v2 and
+# carries the v1 save importer. Adding a game still touches only the compose
+# file and games.toml, never the router binary — that goal is unchanged.
 services:
   router:
     image: ghcr.io/mynameis-nigel/ssh-arcadelobby:latest
@@ -135,34 +136,6 @@ services:
     mem_limit: 256m
     cpus: 1.0
 
-  idlefarmer:
-    # Playable, but not yet safe to put behind the router for real players:
-    # it has no trusted-proxy identity support (docs/02's retrofit task),
-    # so every bridged connection would resolve to the same identity rather
-    # than each player's own key. Kept here, disconnected from proxy_keys,
-    # as the target shape; wire it for real once the retrofit lands.
-    image: ghcr.io/mynameis-nigel/ssh-idlefarmer:latest
-    environment:
-      IDLEFARM_LISTEN_PORT: "2222"
-      IDLEFARM_HOST_KEY_PATH: /var/lib/idlefarm/ssh_host_key
-      IDLEFARM_LOG_FORMAT: json
-      # No LITESTREAM_*/*_MC_PATH here: this image has no entrypoint.sh or
-      # litestream wiring of its own yet (predates doc 06's fleet decision).
-    volumes:
-      - idlefarmer-data:/var/lib/idlefarm
-    networks: [ssharcade]
-    restart: unless-stopped
-    stop_grace_period: 45s
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    mem_limit: 256m
-    cpus: 1.0
-
 networks:
   ssharcade: {}
 
@@ -170,7 +143,6 @@ volumes:
   arcade-router-data: {}
   farm-data: {}
   moonminer-data: {}
-  idlefarmer-data: {}
 
 secrets:
   proxy_key:
