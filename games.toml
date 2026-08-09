@@ -26,9 +26,10 @@ addr    = "idlefarmer:22"
 order   = 20
 
 [[games]]
-id      = "packetderby"
-name    = "PACKET DERBY"
-tagline = "Coming soon..."
-descriptors = ["racing", "multiplayer"]
-addr    = "packetderby:22"
+id      = "chess"
+name    = "GAMBIT"
+tagline = "Bots or humans. Real clocks."
+descriptors = ["chess", "strategy", "multiplayer"]
+addr    = "chess:22"
 order   = 30
+# version: live-detected from the SSH banner, not set here (see docs/03).
