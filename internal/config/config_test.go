@@ -16,7 +16,7 @@ func TestDefaults(t *testing.T) {
 	if cfg.HostKeyPath != "var/ssh_host_key" || cfg.ProxyKeyPath != "var/proxy_key" {
 		t.Fatalf("unexpected key defaults: %+v", cfg)
 	}
-	if cfg.GamesPath != "games.toml" {
+	if cfg.GamesPath != "games.dev.toml" {
 		t.Fatalf("unexpected games path: %q", cfg.GamesPath)
 	}
 	if cfg.BannerPath != "banner.toml" {
