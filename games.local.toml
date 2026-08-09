@@ -18,3 +18,12 @@ descriptors = ["extraction", "4 worlds", "push-your-luck"]
 addr    = "127.0.0.1:2224"
 order   = 20
 # version: live-detected, same as idlefarm above.
+
+[[games]]
+id      = "chess"
+name    = "GAMBIT"
+tagline = "Bots or humans. Real clocks."
+descriptors = ["chess", "strategy", "multiplayer"]
+addr    = "127.0.0.1:2225"
+order   = 30
+# version: live-detected, same as the others above.
