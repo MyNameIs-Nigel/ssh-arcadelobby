@@ -4,8 +4,14 @@ The front door of **ssharcade** — a fleet of terminal games played over SSH.
 One address, every game:
 
 ```bash
-ssh play.ssharcade.dev
+ssh ssharcade.dev
 ```
+
+`ssh play.ssharcade.dev` reaches the same place and is not going away. Both
+names are A records for the one Elastic IP; `https://ssharcade.dev` bounces
+to the website at `www.ssharcade.dev`. See
+[deploy/README.md](deploy/README.md#dns-the-apex-and-the-web-redirector)
+for why the apex has to serve both protocols.
 
 Players land in an arcade menu (Bubble Tea TUI, keyboard + mouse), pick a
 game, and are bridged transparently into that game's own SSH server running

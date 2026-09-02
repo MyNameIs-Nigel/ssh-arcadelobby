@@ -1,0 +1,61 @@
+# ssharcade.dev edge — redirect only, no site content on this host.
+#
+# WHY THIS EXISTS: DNS has no notion of ports. One A record for a name
+# serves both the SSH router on 22 and anything listening on 80/443, so
+# `ssh ssharcade.dev` requires the apex A record to point at this host's
+# Elastic IP — which in turn means something here has to answer browsers,
+# or the website 404s. That something is this file.
+#
+# The website itself stays on Vercel at www.ssharcade.dev. This box only
+# bounces browsers there, so the site keeps its CDN, its preview deploys
+# and its free egress, and this host serves ~250 bytes per visit instead
+# of the whole site. Deliberately NOT a `file_server`: see deploy/README.md
+# ("Serving the site from the box instead") for what changes if that ever
+# becomes the goal.
+#
+# DEPLOYED COPY: /srv/ssharcade/Caddyfile, synced by ssh-arcadelobby's
+# release.yml alongside docker-compose.yml and games.toml. Edits made
+# directly on the host are overwritten by the next router release — unlike
+# banner/banner.toml, this is code, not operator-edited content.
+
+# There is deliberately no global options block.
+#
+#   * The admin API keeps its default bind (127.0.0.1:2019). That is the
+#     *container's* loopback — reachable only from inside this container's
+#     network namespace, not from the host and not from the ssharcade
+#     network — so leaving it on costs nothing, and it is what makes the
+#     zero-downtime `caddy reload` in release.yml's deploy job work.
+#     `admin off` would break that reload.
+#
+#   * No `email`. Let's Encrypt does not require one, and threading it in
+#     as {$ACME_EMAIL} is a footgun: an unset var expands to nothing and
+#     `email` with no argument is a parse error, so a missing host-side
+#     .env would fail the whole config rather than degrade. Add a literal
+#     address inside the block below if you want expiry notices.
+#
+# Dry-running a DNS cutover: uncomment this block to use the staging CA so
+# failed validations don't burn Let's Encrypt's real rate limits, then
+# comment it out again and reload. Staging certs are untrusted by browsers
+# — this is for proving the ACME path works, not for going live.
+#
+# {
+# 	acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+# }
+
+# Apex. `permanent` is a 301, correct for apex→www and what search engines
+# want. Know the trade-off before changing the plan: browsers cache a 301
+# hard and effectively forever, so if this host later serves the site
+# itself, everyone who has visited will keep being sent to www until their
+# cache is cleared. While the apex/www split is still being decided,
+# `temporary` (302) is the reversible choice.
+ssharcade.dev {
+	redir https://www.ssharcade.dev{uri} permanent
+}
+
+# Players are told to run `ssh play.ssharcade.dev`. Sooner or later one of
+# them pastes that into a browser instead of a terminal. Without this block
+# the name resolves here, gets a TLS handshake for a site Caddy has no
+# config for, and the player sees a certificate error rather than the site.
+play.ssharcade.dev {
+	redir https://www.ssharcade.dev{uri} permanent
+}
