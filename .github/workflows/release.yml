@@ -72,12 +72,32 @@ jobs:
       - name: Sync compose + registry config
         # banner.toml is deliberately excluded: it's operator-edited live on
         # the host (docs/03's "edit and save, no redeploy" contract) and
-        # must never be clobbered by a code merge.
+        # must never be clobbered by a code merge. The Caddyfile is the
+        # opposite case — code, not operator content — so it is synced.
+        #
+        # `cp` and not `mv`/`install`: games.toml and the Caddyfile are
+        # both single-file bind mounts, and cp truncates in place,
+        # preserving the inode the running containers hold open. A
+        # replace-by-rename would orphan both mounts silently.
         run: |
-          cp docker-compose.yml games.toml /srv/ssharcade/
+          cp docker-compose.yml games.toml Caddyfile /srv/ssharcade/
         working-directory: deploy
       - name: Deploy router
         run: |
           cd /srv/ssharcade
           docker compose pull router
           docker compose up -d router
+      - name: Deploy edge redirector
+        # Separate step from the router so a Caddy problem is legible as a
+        # Caddy problem, and so the games are already back up before this
+        # runs. `web` is an image we don't build, so there is nothing to
+        # pull on the usual cadence.
+        run: |
+          cd /srv/ssharcade
+          docker compose up -d web
+          # `up -d` only recreates a container whose *definition* changed;
+          # a Caddyfile content change isn't part of that, so it would be
+          # copied above and then quietly ignored. Reload picks it up with
+          # zero downtime, and validates first: a broken Caddyfile fails
+          # this step loudly while the previous config keeps serving.
+          docker compose exec -T web caddy reload --config /etc/caddy/Caddyfile

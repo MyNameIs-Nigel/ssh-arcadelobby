@@ -15,18 +15,33 @@ service restarted on the host. Adding a game touches the compose file and
 ## Topology
 
 ```
-Route 53 / DNS:  play.ssharcade.dev  A →  <elastic IP>
+DNS:  ssharcade.dev       A     →  <elastic IP>    (ssh + web redirect)
+      play.ssharcade.dev  A     →  <elastic IP>    (ssh, the documented name)
+      www.ssharcade.dev   CNAME →  Vercel          (the website; not this host)
 EC2 host (t3.small+, Docker + compose plugin):
   /srv/ssharcade/
     docker-compose.yml        (this repo, deployed copy)
     games.toml                (mounted into router, hot-reloaded)
+    Caddyfile                 (mounted into web, apex → www redirect)
     secrets/proxy_key         (ed25519 private key, chmod 600)
-  volumes: arcade-router-data, moonminer-data, idlefarmer-data
-  network: ssharcade (bridge, internal service DNS: moonminer, idlefarmer)
+  volumes: arcade-router-data, moonminer-data, idlefarmer-data, caddy-data
+  networks: ssharcade (bridge, internal service DNS: moonminer, idlefarmer)
+            edge      (web only — no route to the games)
 ```
 
 Optional vanity DNS (`moonminer.ssharcade.dev` → same IP) is cosmetic only:
 SSH has no SNI, everything lands on the router regardless.
+
+**The apex carries both protocols.** DNS resolves names to addresses, not
+to ports, so an A record for `ssharcade.dev` necessarily serves port 22 and
+port 443 under the same name — the apex cannot point at Vercel for the web
+and here for SSH. Pointing it here is what makes `ssh ssharcade.dev` work,
+and the `web` service (Caddy) is the consequence: it answers browsers on
+80/443 with a 301 to `www.ssharcade.dev`, where the site itself still lives
+on Vercel. The site is deliberately *not* served from this box — that would
+trade Vercel's CDN and preview deploys for EC2 egress and a build artifact
+CI would have to ship. `deploy/README.md` has the records, the security
+group rules, and the DNS-before-merge ordering ACME requires.
 
 ## Compose (shape — maintained in this repo as `deploy/docker-compose.yml`)
 
@@ -85,7 +100,9 @@ Key properties to preserve whatever else changes: games have **no
 published ports**; proxy **private** key only in the router; proxy
 **public** key list mounted into games; per-service `stop_grace_period`
 respecting each service's flush budget; non-root read-only containers all
-around.
+around; and the `web` redirector isolated on its own `edge` network, since
+it is the one container with an unauthenticated public listener and has no
+business reaching the router, the games, or the proxy key.
 
 **Durability (see doc 06 — canonical):** every game service additionally
 sets `LITESTREAM_REPLICA_URL: s3://<bucket>/<game>/db` (+ the `keys/`
@@ -201,12 +218,21 @@ container is recreated.
 - [ ] Host reboot: `restart: unless-stopped` brings the stack back; host
   keys and saves intact (volumes).
 - [ ] No game port reachable from the public internet (scan the host).
+      The scan's expected answer is now 22, 80, 443 and the dev sshd — 80
+      and 443 are Caddy and are *supposed* to be open.
+- [ ] `ssh ssharcade.dev` and `ssh play.ssharcade.dev` both reach the menu.
+- [ ] `curl -sI https://ssharcade.dev` → 301 to `https://www.ssharcade.dev`,
+      with a certificate that validates.
+- [ ] `docker compose exec web ping router` fails to resolve — the edge
+      network really is isolated from `ssharcade`.
 - [ ] **Instance-loss drill** (doc 06): terminate the instance, bootstrap
   a fresh one, `compose up -d` → every game restores from S3 with correct
   host keys and ≤ seconds of lost play.
 
 ## Out of scope
 
-- TLS/web presence for ssharcade.dev (website) — separate concern.
+- The website's *content and hosting* — that stays on Vercel at
+  `www.ssharcade.dev`. This repo owns only the apex redirector that lets
+  the SSH endpoint and the site share one name (see "Topology").
 - Multi-host scaling, monitoring/alerting stack — post-MVP (a healthcheck
   cron + uptime pinger is fine to start).

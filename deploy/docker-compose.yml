@@ -203,14 +203,77 @@ services:
     mem_limit: 512m
     cpus: 1.0
 
+  # Edge redirector. The only service here that is not part of the arcade
+  # itself: it exists so the ssharcade.dev APEX can point at this host's
+  # Elastic IP (making `ssh ssharcade.dev` work) without the website
+  # 404ing, because one A record necessarily serves port 22 and port 443
+  # alike. It answers browsers with a 301 to www.ssharcade.dev, where the
+  # real site stays on Vercel. See ./Caddyfile for the full rationale.
+  web:
+    # Major-version tag, not a floating :latest and not a pinned minor.
+    # This is the one image in the file we don't build, so a surprise major
+    # bump is the real risk and 2.x is the guard against it. Pin harder
+    # (caddy:2.<minor>-alpine, or a digest) if a reproducible host rebuild
+    # ever matters more than picking up patch releases on redeploy.
+    image: caddy:2-alpine
+    ports:
+      - "80:80"   # ACME HTTP-01 challenge + plain-http visitors
+      - "443:443" # everything a browser actually asks for
+    volumes:
+      # Single-file mount, same as games.toml and safe for the same reason:
+      # the deploy job writes it with `cp`, which truncates in place and
+      # keeps the inode. Replace that with an editor's atomic-save or an
+      # `mv` and the mount silently pins to the orphaned old inode — see
+      # the note on the router's banner mount above.
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Issued certificates and the ACME account key. This volume is the
+      # reason a redeploy doesn't re-issue: lose it and Caddy starts over
+      # against Let's Encrypt's rate limits.
+      - caddy-data:/data
+      - caddy-config:/config
+    # NOT on [ssharcade], and that is the point. This is the only container
+    # on the box with an unauthenticated public listener; it has no reason
+    # to reach the games, the router, or the proxy key, so it cannot.
+    networks: [edge]
+    restart: unless-stopped
+    stop_grace_period: 10s # holds no state worth flushing
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    cap_add:
+      # The one deviation from the fleet's drop-everything rule, and it is
+      # required rather than convenient: the caddy image runs as root, but
+      # a root process with no capabilities still cannot bind a port below
+      # 1024. The router sidesteps this by mapping 22->2222 and listening
+      # high; Caddy cannot, because http_port/https_port change the ports
+      # it puts in generated redirect URLs as well as the ones it binds,
+      # which would send browsers to https://ssharcade.dev:8443.
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    # A redirect-only Caddy idles around 25 MB; 128m is headroom for TLS
+    # handshake bursts, not a measured requirement. It is deliberately the
+    # smallest allocation in the file — this service must never compete
+    # with the games for memory.
+    mem_limit: 128m
+    cpus: 0.5
+
 networks:
   ssharcade: {}
+  # Deliberately separate from ssharcade so the public web listener has no
+  # route to the game containers. Must NOT be marked `internal: true` —
+  # Caddy needs outbound reach to Let's Encrypt to issue and renew.
+  edge: {}
 
 volumes:
   arcade-router-data: {}
   farm-data: {}
   moonminer-data: {}
   chess-data: {}
+  caddy-data: {}
+  caddy-config: {}
 
 secrets:
   proxy_key:
