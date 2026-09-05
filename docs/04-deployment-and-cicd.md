@@ -131,42 +131,49 @@ router's secret, restart router, remove old public key.
 - **`release.yml`** — on push to `main`:
   1. run the same tests (never deploy untested merges),
   2. `docker/build-push-action` → `ghcr.io/mynameis-nigel/ssh-arcadelobby`
-     tagged `latest` + `sha-<short>`,
-  3. deploy job (environment-gated, `runs-on: [self-hosted, production]`):
-     runs directly on the `play.ssharcade.dev` host itself and does
-     `docker compose -f /srv/ssharcade/docker-compose.yml pull router && docker compose -f /srv/ssharcade/docker-compose.yml up -d router`.
+     tagged `latest` + `sha-<short>`.
 
-The deploy job runs **on the host, not over SSH from a GitHub-hosted
-runner**. The host's real sshd is deliberately locked to one dev IP, and
-GitHub-hosted runners come from a huge, ever-changing IP range that will
-never match that allowlist — an `appleboy/ssh-action`-style job would just
-time out. Installing the runner as a service on the box instead means no
-inbound port ever has to be opened for CI. See "Self-hosted runner setup"
-in `deploy/README.md` for the one-time bootstrap.
+  There is no third step. **Merging to `main` produces an image; it does not
+  ship it.** Putting that image on the host is manual — see
+  `deploy/README.md`, "Deploying by hand".
+
+There used to be a third job, `runs-on: [self-hosted, production]`, running on
+a runner installed on the `play.ssharcade.dev` host. That shape was chosen
+because the host's real sshd is locked to one dev IP and GitHub-hosted runners
+come from an ever-changing range that would never match it, so an
+`appleboy/ssh-action`-style job would just time out. It is not survivable on a
+public repo: for `pull_request` events GitHub reads the workflow file from the
+PR head, so a fork PR can retarget `runs-on:` at the `self-hosted` label and
+execute on the box, in the docker group, next to every player save. Fork-PR
+approval does not close the gap — it cannot be configured while the repo is
+private, and one merged PR grants standing approval afterwards. All four
+runners were deregistered and uninstalled on 2026-09-04.
+
+**Where this is going.** The replacement is GitHub OIDC + AWS SSM Run Command:
+the deploy job assumes a short-lived role by OIDC and sends the
+`docker compose pull && up -d` to the instance through SSM. Outbound only —
+no inbound port, no IP allowlist, no standing AWS keys, and no GitHub-
+controlled process on the host. Until that lands, deploys are manual.
 
 ### Per-game workflow (template — each game repo copies this)
 
 Identical `ci.yml`; `release.yml` differs only in image name and service.
-Each game repo needs its own runner registration on the host (GitHub's
-free tier has no account-wide runner pool for personal accounts — every
-repo registers its own): a separate `/opt/actions-runner-<repo>` directory,
-each running as its own systemd service, per `deploy/README.md`.
+No game repo has, or should have, a runner registered on the host.
 
 ```yaml
-# release.yml (game repo)  — test → image → restart ONLY this service
+# release.yml (game repo)  — test → image, and stop there
 on: { push: { branches: [main] } }
 jobs:
   test:    # vet + build + go test -race ./...
   publish: # needs: test → ghcr.io/mynameis-nigel/<repo>:latest + sha
-  deploy:  # needs: publish
-    runs-on: [self-hosted, production]
-    environment: production
-    steps:
-      - name: Deploy moonminer
-        run: |
-          cd /srv/ssharcade
-          docker compose pull moonminer
-          docker compose up -d moonminer
+```
+
+Restarting the one service is manual, per `deploy/README.md`:
+
+```bash
+cd /srv/ssharcade
+docker compose pull moonminer
+docker compose up -d moonminer
 ```
 
 Because of each game's graceful shutdown (SIGTERM → flush saves →
@@ -174,18 +181,19 @@ auto-bail active runs), a deploy mid-session costs players a reconnect,
 never progress. The router keeps serving the menu throughout; the game
 shows `○ OFFLINE` for the seconds it's restarting.
 
-Registry/pull auth: simplest is **public GHCR images** (the code is going
-to be public anyway); otherwise `docker login ghcr.io` once on the host
-with a read-only PAT.
+Registry/pull auth: the host is logged in to GHCR with a read-only PAT.
+Settle whether the packages are actually public **before** running
+`docker logout` anywhere — if any image is still private, logging out
+breaks every subsequent `docker compose pull`.
 
 ### Compose changes (adding a game)
 
-The compose file + `games.toml` live in this repo under `deploy/`; the
-`release.yml` deploy job's "Sync compose + registry config" step (it runs
-directly on the host, per the self-hosted-runner note above, so this is a
-plain `cp`, not a network rsync) copies both to `/srv/ssharcade/` on every
-merge to main, before `docker compose up -d router` — `games.toml`
-hot-reloads, compose changes take effect on that same `up -d`.
+The compose file + `games.toml` live in this repo under `deploy/`. The
+`release.yml` deploy job used to copy them to `/srv/ssharcade/` on every merge
+to main; that sync is now a manual `cp` from a checkout on the host, run before
+`docker compose up -d router` — `games.toml` hot-reloads, compose changes take
+effect on that same `up -d`. It is a plain `cp` and not a network rsync or a
+`mv`, for the inode reason below.
 `deploy/banner/banner.toml` is deliberately **not** synced this way: it's an
 operator notice meant to be edited directly on the host without a code
 deploy (see doc 03's "Operator banner"), so CI never touches
@@ -212,9 +220,9 @@ container is recreated.
 - [ ] `docker compose stop moonminer`: menu shows `○ OFFLINE` within one
   probe cycle + damping; players in idlefarmer unaffected; `start` flips it
   back.
-- [ ] Merge-to-main on a game repo redeploys only that service (watch
-  `docker compose ps` timestamps); a player in another game stays
-  connected throughout.
+- [ ] A manual `docker compose pull <game> && up -d <game>` restarts only
+  that service (watch `docker compose ps` timestamps); a player in another
+  game stays connected throughout.
 - [ ] Host reboot: `restart: unless-stopped` brings the stack back; host
   keys and saves intact (volumes).
 - [ ] No game port reachable from the public internet (scan the host).

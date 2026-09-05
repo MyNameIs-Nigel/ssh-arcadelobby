@@ -12,11 +12,14 @@ on:
 # 16:34:54. Production silently reverted to the previous registry and `:latest`
 # pointed at the older image, with both runs reporting success.
 #
+# The deploy half of that race went away with the deploy job (see below); the
+# `:latest` half did not, because two overlapping runs still push the same tag
+# and the slower one still wins.
+#
 # One group for the whole workflow, so at most one release is ever in flight,
 # and cancel-in-progress so a newer merge supersedes an older one rather than
-# queueing behind it and then clobbering it. Superseding is safe here: the
-# deploy is `cp` + `docker compose up -d router`, and a cancelled run is always
-# followed by the newer one doing the same work from a newer tree.
+# queueing behind it and then clobbering it. Superseding is safe here: a
+# cancelled run is always followed by a newer one publishing from a newer tree.
 concurrency:
   group: release-production
   cancel-in-progress: true
@@ -57,47 +60,29 @@ jobs:
             ghcr.io/mynameis-nigel/ssh-arcadelobby:latest
             ghcr.io/mynameis-nigel/ssh-arcadelobby:${{ steps.meta.outputs.sha_short }}
 
-  deploy:
-    needs: publish
-    # Runs directly on the play.ssharcade.dev EC2 host (self-hosted runner
-    # installed there, see deploy/README.md) instead of dialing out over
-    # SSH: the host's real sshd (port 9922) is locked to one dev IP, and
-    # GitHub-hosted runners use ephemeral IPs from a huge, ever-changing
-    # range that will never match that allowlist. Running the job on the
-    # box itself means no inbound port has to be opened for CI at all.
-    runs-on: [self-hosted, production]
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-      - name: Sync compose + registry config
-        # banner.toml is deliberately excluded: it's operator-edited live on
-        # the host (docs/03's "edit and save, no redeploy" contract) and
-        # must never be clobbered by a code merge. The Caddyfile is the
-        # opposite case — code, not operator content — so it is synced.
-        #
-        # `cp` and not `mv`/`install`: games.toml and the Caddyfile are
-        # both single-file bind mounts, and cp truncates in place,
-        # preserving the inode the running containers hold open. A
-        # replace-by-rename would orphan both mounts silently.
-        run: |
-          cp docker-compose.yml games.toml Caddyfile /srv/ssharcade/
-        working-directory: deploy
-      - name: Deploy router
-        run: |
-          cd /srv/ssharcade
-          docker compose pull router
-          docker compose up -d router
-      - name: Deploy edge redirector
-        # Separate step from the router so a Caddy problem is legible as a
-        # Caddy problem, and so the games are already back up before this
-        # runs. `web` is an image we don't build, so there is nothing to
-        # pull on the usual cadence.
-        run: |
-          cd /srv/ssharcade
-          docker compose up -d web
-          # `up -d` only recreates a container whose *definition* changed;
-          # a Caddyfile content change isn't part of that, so it would be
-          # copied above and then quietly ignored. Reload picks it up with
-          # zero downtime, and validates first: a broken Caddyfile fails
-          # this step loudly while the previous config keeps serving.
-          docker compose exec -T web caddy reload --config /etc/caddy/Caddyfile
+  # There is no `deploy:` job any more.
+  #
+  # It ran `runs-on: [self-hosted, production]` — directly on the
+  # play.ssharcade.dev host. A self-hosted runner is unsafe on a repo that is
+  # going public: for `pull_request` events GitHub reads the workflow file
+  # from the PR head, so anyone who can open a fork PR can point `runs-on:` at
+  # the `self-hosted` label and execute their own code on the box — which is
+  # in the docker group, and holds every player save. The runners were
+  # deregistered and uninstalled on 2026-09-04, before any repo is flipped
+  # public. Do not reinstate one here.
+  #
+  # This job did two things nothing else does yet, so both are manual now:
+  #
+  #   1. Sync `deploy/docker-compose.yml`, `deploy/games.toml` and
+  #      `deploy/Caddyfile` to /srv/ssharcade — the whole fleet's compose file
+  #      lives here, so a change in this repo is how any game's service block
+  #      reaches the host at all. Use `cp`, never `mv`/`install`: games.toml
+  #      and the Caddyfile are single-file bind mounts and `cp` truncates in
+  #      place, keeping the inode the running containers hold open.
+  #      banner.toml stays excluded — it is operator-edited live on the host.
+  #   2. `caddy reload` after a Caddyfile change — `up -d` only recreates a
+  #      container whose *definition* changed, so a config edit is otherwise
+  #      copied and then silently ignored.
+  #
+  # See deploy/README.md, "Deploying by hand", for the full procedure, and
+  # docs/04-deployment-and-cicd.md for where this is going (OIDC + SSM).

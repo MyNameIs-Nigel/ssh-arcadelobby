@@ -29,8 +29,11 @@ lobby stays up and marks it `○ OFFLINE`.
 ## Status
 
 **Live** at `play.ssharcade.dev`, router `1.1.2` (alpha channel), fronting
-Idle Farmer and Moon Miner. Every push to `main` rebuilds the image and
-redeploys the host, so `main` is production.
+Idle Farmer and Moon Miner. Every push to `main` rebuilds and publishes the
+image; putting it on the host is a separate manual step
+([`deploy/README.md`](deploy/README.md) § "Deploying by hand"). `main` is
+still the production branch — treat it as such — it just no longer ships
+itself.
 
 `docs/` remains the build plan: [docs/README.md](docs/README.md) is the
 index; each numbered doc is a self-contained task an agent can pick up

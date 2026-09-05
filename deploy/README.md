@@ -25,10 +25,9 @@ story this stack wires into.
    ```
 
 3. **Copy the deployed files** from this repo. `docker-compose.yml`,
-   `games.toml` and `Caddyfile` only need this once — every merge to main
-   re-copies them
-   automatically (`release.yml`'s deploy job, see docs/04's "Compose
-   changes" section). `banner/banner.toml` is different: CI never touches
+   `games.toml` and `Caddyfile` are re-copied by hand on every change that
+   touches them — see "Deploying by hand" below, and docs/04's "Compose
+   changes" section. `banner/banner.toml` is different: nothing touches
    it once it exists on the host, so this manual copy is the *only* time
    it's seeded — after that, edit `/srv/ssharcade/banner/banner.toml`
    directly on the host to change the notice (docs/03's "Operator banner").
@@ -138,7 +137,8 @@ Do these in order — the middle step is the one that bites.
 1. **Open 80 and 443** in the security group.
 2. **Cut the DNS over**: apex A → the Elastic IP, and add `www` on Vercel.
    Wait for it to actually propagate (`dig +short ssharcade.dev`).
-3. **Then merge the PR.** Only now does the deploy job start Caddy.
+3. **Then merge the PR, and only then deploy it** — Caddy must not start
+   before the apex resolves here.
 
 If you start Caddy before the apex resolves here, ACME validation fails —
 Let's Encrypt cannot reach a name that still points at Vercel. Nothing
@@ -199,53 +199,87 @@ proxy key. It is also the only service in the file that adds a capability
 back (`NET_BIND_SERVICE`, to bind 80/443 as a root process with everything
 else dropped). Keep both properties if you touch that service block.
 
-## Self-hosted runner setup (one-time per game repo)
+## Deploying by hand
 
-Each repo's `release.yml` deploy job runs `runs-on: [self-hosted,
-production]` — directly on this host, not over SSH from a GitHub-hosted
-runner. That's deliberate: this host's real sshd (the dev-access port, not
-22 which is bound to the router container) is locked down to one IP, and
-GitHub-hosted runners come from a huge, ever-changing IP range that would
-never match that allowlist — an SSH-based deploy step would just hang and
-time out. Running the job on the box itself needs no inbound port opened
-for CI at all.
+There is no automated deploy. Each repo's `release.yml` runs its tests and
+publishes its image on merge to `main`, and stops there — shipping that image
+is a manual step until the OIDC + SSM path in `docs/04-deployment-and-cicd.md`
+replaces it.
 
-GitHub's free tier has no account-wide runner pool for personal accounts —
-every repo that wants a deploy job needs its **own** runner registered on
-the host. Repeat this for each repo (`ssh-arcadelobby`, `ssh-farm`,
-`ssh-moonminer`, and any future game repo):
+It used to be a `deploy:` job running on a self-hosted GitHub Actions runner
+installed on this host. That is unsafe for a repo that is going public: for
+`pull_request` events GitHub reads the workflow file from the PR head, so
+anyone who can open a fork PR can point `runs-on:` at the `self-hosted` label
+and run their own code here — as a user in the docker group, on the box
+holding every player save. Approval settings do not close it: the control is
+not configurable while a repo is private, and one merged PR grants a
+contributor standing approval afterwards. All four runners were deregistered
+and their `/opt/actions-runner-*` directories removed on 2026-09-04.
+**Do not reinstall one — and never on a repo that is already public.**
+
+### A game (farm, moonminer, chess)
 
 ```bash
-# One directory per repo — each runner is its own systemd service.
-sudo mkdir -p /opt/actions-runner-<repo>
-sudo chown "$USER" /opt/actions-runner-<repo>
-cd /opt/actions-runner-<repo>
-
-curl -fsSL -o runner.tar.gz \
-  https://github.com/actions/runner/releases/download/v2.335.1/actions-runner-linux-x64-2.335.1.tar.gz
-tar xzf runner.tar.gz && rm runner.tar.gz
-
-# Amazon Linux 2023 isn't in the runner's own OS-detection list; its ICU
-# dependency has to be installed manually instead of via
-# ./bin/installdependencies.sh.
-sudo dnf install -y libicu
-
-# Get a registration token: GitHub repo → Settings → Actions → Runners →
-# New self-hosted runner (or `gh api -X POST
-# repos/mynameis-nigel/<repo>/actions/runners/registration-token`).
-./config.sh --url https://github.com/mynameis-nigel/<repo> --token <REG_TOKEN> \
-  --unattended --name ec2-deploy --labels self-hosted,ec2,production --work _work
-
-# Installs as a systemd service running as the current user (must be in
-# the docker group already, per "Fresh host bootstrap" step 1).
-sudo ./svc.sh install "$USER"
-sudo ./svc.sh start
+cd /srv/ssharcade
+docker compose pull <service>
+docker compose up -d <service>   # only this service restarts; others unaffected
 ```
 
-No `DEPLOY_HOST` / `DEPLOY_SSH_KEY` secrets are needed with this approach —
-the `environment: production` gate is kept only so a required-reviewer
-protection rule can be added later if desired, not because anything reads
-those vars/secrets anymore.
+Each game shuts down gracefully (SIGTERM → flush saves → auto-bail active
+runs), so a restart mid-session costs players a reconnect, never progress.
+The router keeps serving the menu throughout; the game shows `○ OFFLINE` for
+the seconds it is restarting.
+
+### The router, or anything else under `deploy/`
+
+The fleet's compose file and `games.toml` live in this repo, so a change here
+is the only way a game's service block reaches the host at all. From a
+checkout of this repo **on the host**:
+
+```bash
+cd <checkout>/deploy
+cp docker-compose.yml games.toml Caddyfile /srv/ssharcade/
+```
+
+`cp`, never `mv` or `install`: `games.toml` and the `Caddyfile` are both
+single-file bind mounts, and `cp` truncates in place, preserving the inode the
+running containers hold open. A replace-by-rename orphans both mounts
+silently, and nothing reports it. `banner/banner.toml` is deliberately not
+synced — it is operator content, edited live on the host (see docs/03).
+
+Then:
+
+```bash
+cd /srv/ssharcade
+docker compose pull router
+docker compose up -d router
+```
+
+After a **Caddyfile** change only:
+
+```bash
+docker compose up -d web
+docker compose exec -T web caddy reload --config /etc/caddy/Caddyfile
+```
+
+`up -d` recreates a container whose *definition* changed, which a config-file
+edit is not — without the reload the new Caddyfile is copied to the host and
+then quietly ignored. Reload validates first, so a broken file fails loudly
+while the previous config keeps serving.
+
+### Rolling back
+
+Every repo tags each build `sha-<short>` alongside `latest`, so a bad deploy
+rolls back without a rebuild:
+
+```bash
+docker compose pull ghcr.io/mynameis-nigel/ssh-<game>:sha-<short>
+docker compose up -d <service>
+```
+
+The `production` environment still exists on each repo, with no protection
+rules and nothing now reading it. It is kept so the SSM deploy job can gate on
+it when it lands.
 
 ## Durability (S3/Litestream)
 
@@ -333,14 +367,7 @@ rollout item.
 
 ## Redeploying a single service
 
-CI does this automatically on merge to `main` (docs/04's per-repo
-`release.yml`); by hand:
-
-```bash
-cd /srv/ssharcade
-docker compose pull farm
-docker compose up -d farm    # only this service restarts; others unaffected
-```
+See "Deploying by hand" above. Nothing redeploys on merge any more.
 
 ## Rotating the proxy key
 

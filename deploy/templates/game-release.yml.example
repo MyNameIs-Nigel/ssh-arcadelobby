@@ -5,11 +5,16 @@
 # repo (vet + build + go test -race ./...) — copy this repo's verbatim.
 #
 # Same shape as this repo's own release.yml: test (never skipped) →
-# publish (needs: test) → deploy (needs: publish, runs on the host's own
-# self-hosted runner — see "Self-hosted runner setup" in deploy/README.md
-# in ssh-arcadelobby. Every game repo registers its own runner instance on
-# the host; there's no account-wide runner pool on GitHub's free tier for
-# personal accounts).
+# publish (needs: test) → stop. There is deliberately NO deploy job, here
+# or in any game repo. It used to run on a self-hosted runner installed on
+# the production host, which cannot survive the repos going public: for
+# `pull_request` events GitHub reads the workflow file from the PR head, so
+# a fork PR can retarget `runs-on:` at the `self-hosted` label and execute
+# on the box. All four runners were deregistered on 2026-09-04 — do not add
+# one back for a new game.
+#
+# A new game is therefore shipped by hand until the OIDC + SSM deploy path
+# lands: deploy/README.md, "Deploying by hand".
 name: Release
 
 on:
@@ -51,14 +56,3 @@ jobs:
           tags: |
             ghcr.io/mynameis-nigel/<repo>:latest
             ghcr.io/mynameis-nigel/<repo>:${{ steps.meta.outputs.sha_short }}
-
-  deploy:
-    needs: publish
-    runs-on: [self-hosted, production]
-    environment: production
-    steps:
-      - name: Deploy <service>
-        run: |
-          cd /srv/ssharcade
-          docker compose pull <service>
-          docker compose up -d <service>
