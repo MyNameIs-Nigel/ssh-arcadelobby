@@ -1,0 +1,27 @@
+[Unit]
+Description=ssharcade Litestream replication check (failure mode 1)
+Documentation=file:///srv/ssharcade/monitoring/README.md
+# Wants, not Requires: if docker is down the check should RUN and FAIL, which is
+# a genuine alert, rather than being skipped as an unmet dependency.
+Wants=docker.service
+After=docker.service network-online.target
+OnFailure=replication-check-alert.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/replication-check
+ExecStart=/usr/local/bin/replication-check.sh
+
+# The script bounds its own AWS retries, but a hung `docker run` is outside its
+# control, and a monitor that wedges fails exactly as silently as one that lies.
+# On timeout systemd marks the unit failed, which fires OnFailure above.
+TimeoutStartSec=120
+
+# Needs the docker socket, so this cannot be meaningfully sandboxed. Keep the
+# cheap protections that do not interfere.
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
