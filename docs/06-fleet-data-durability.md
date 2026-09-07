@@ -45,13 +45,27 @@ s3://<org>-ssharcade-data/
   keys/farm/           host keys (one-time upload, restored on boot)
   keys/moonminer/
   keys/router/         router host key + proxy key backup
+  private/farm/        the farm denylist — host state that is in no repo, so
+                       the bucket is its only durable copy (ssh-farm §5.5)
   archive/…            retired-game DB archives (e.g. idlefarmer at cutover)
 ```
+
+`private/` is deliberately outside every `keys/` prefix. The `MC_HOST_s3`
+credential the containers carry is scoped to `keys/*` only, so it cannot read
+`private/` — reaching it needs a separate grant, which is the point.
 
 - **Versioning ON**, SSE-S3 encryption, block public access.
 - Lifecycle: litestream manages generation retention (config `retention:
   72h`); bucket lifecycle expires noncurrent versions after 30 d as
-  belt-and-braces.
+  belt-and-braces. **Suspend that rule during any migration or rollout
+  window** — noncurrent versions are the undo button precisely when a change
+  is in flight.
+- **Restore needs `s3:GetBucketLocation`, not just read access.** Replication
+  works without it whenever `LITESTREAM_S3_REGION` is set on the write path,
+  so a bucket can replicate perfectly for months and still fail the first
+  command of a real recovery. Grant it on the bucket, and pass
+  `-e LITESTREAM_S3_REGION=<region>` to any manual `litestream restore` or it
+  fails confusingly.
 - **IAM**: the EC2 instance profile gets one policy — `Get/Put/List/Delete`
   scoped to this bucket only. **No AWS keys in compose files or images**;
   the SDK inside litestream picks up the instance role automatically.
@@ -88,11 +102,30 @@ s3://<org>-ssharcade-data/
    live generation to a scratch container, `PRAGMA integrity_check` +
    decode-every-save, record observed RPO/RTO. The drill script lives in
    ssh-farm and is reused fleet-wide.
-4. **Watch the replica age.** MVP: litestream logs land in `docker logs`
-   (compose logging), and the quarterly drill catches rot. Post-MVP TODO:
-   a scheduled check that alerts when `<game>/db` generations stop
-   advancing while the game has active sessions.
-5. **Archives on retirement.** A decommissioned game's final DB goes to
+4. **Watch the replica age — and watch the right prefix.** In litestream
+   v0.5's LTX layout, `<game>/db/` holds compaction tiers (`db/0002`,
+   `db/0003`, `db/0009`) written on a *timer*, whether or not anything
+   replicated. Raw WAL lands only in `db/0000/`. A check that reads the newest
+   object under `<game>/db/` will therefore report a game healthy while its
+   replication has been dead for hours — the exact false negative that matters
+   most. Observed 2026-09-06: chess's last real WAL write was 19:37:58Z and a
+   compaction object landed at 00:00:01Z with no writes in between.
+
+   Watching `db/0000/` alone just swaps that for a false positive, since a
+   quiet game legitimately writes nothing for hours and a check that cries wolf
+   gets muted. Alert on the conjunction instead: **the game's DB changed AND no
+   new `db/0000/` object followed it**. That is failure mode 1 and nothing
+   else.
+
+5. **A game that cannot replicate must not serve.** Every entrypoint has a
+   dev-mode fall-through that runs the binary with no replication when
+   `LITESTREAM_REPLICA_URL` is unset — correct for local dev and CI, which must
+   never need AWS credentials, and the single most dangerous failure in the
+   fleet in production: the game serves normally while nothing is backed up,
+   and it stays silent until someone needs a restore. Production sets
+   `<GAME>_REQUIRE_REPLICATION=true`, which turns that fall-through into a
+   crash loop noticed in seconds. This is fleet-wide and not optional.
+6. **Archives on retirement.** A decommissioned game's final DB goes to
    `archive/<game>/<date>/` before its volume is removed (see the
    idlefarmer cutover, `../../ssh-farm/docs/framework/03`).
 

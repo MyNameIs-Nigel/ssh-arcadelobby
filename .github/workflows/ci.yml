@@ -1,9 +1,15 @@
 name: CI
 
+# No `pull_request:` trigger, deliberately. Once these repos are public that
+# trigger would run on every fork PR from anyone on the internet. Branches pushed
+# inside the repo still get full CI through `push` below — which covers every PR
+# opened from a branch here — so the only thing dropped is running unreviewed
+# fork code automatically. Review a fork PR, then run this by hand if you want a
+# signal on it.
 on:
-  pull_request:
   push:
     branches-ignore: [main]
+  workflow_dispatch:
 
 jobs:
   test:

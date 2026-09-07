@@ -56,7 +56,7 @@ is the canonical contract every game repo implements against.
 | Repo | Role |
 | --- | --- |
 | `ssh-arcadelobby` | this — router, lobby TUI, arcade compose + deploy docs, fleet durability pattern |
-| `ssh-farm` | game (private repo): Idle Farmer v2 — mouse, leaderboards, durable data. **Live** |
+| `ssh-farm` | game: Idle Farmer v2 — mouse, leaderboards, durable data. **Live** |
 | `ssh-moonminer` | game: asteroid-mining extraction loop. **Live** |
 | `ssh-chess` | game: GAMBIT — chess over SSH, server-authoritative clocks, Stockfish bots. Compose service is in `deploy/`; goes live on its first `main` release |
 
