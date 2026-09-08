@@ -1,49 +1,28 @@
 #!/bin/sh
 # Container entrypoint implementing the canonical fleet durability pattern
-# (docs/06-fleet-data-durability.md) for the router: SQLite player prefs,
-# SSH host key, and proxy (bridge client) key backup objects.
+# (docs/06-fleet-data-durability.md) for the router: SQLite player prefs plus
+# the SSH host key that gives play.ssharcade.dev its identity.
 set -eu
 
 DB_PATH="${ARCADE_DB_PATH:-/var/lib/arcade/arcade.db}"
 HOST_KEY_PATH="${ARCADE_HOST_KEY_PATH:-/var/lib/arcade/ssh_host_key}"
-PROXY_KEY_PATH="${ARCADE_PROXY_KEY_PATH:-/var/lib/arcade/proxy_key}"
-HOST_KEY_MC_PATH="${ARCADE_HOST_KEY_MC_PATH:-}"
-PROXY_KEY_MC_PATH="${ARCADE_PROXY_KEY_MC_PATH:-}"
+# Read-only bind mount of the host's canonical copy of the router's SSH host
+# key (/srv/ssharcade/private/keys/router on the box).
+#
+# This replaces an `mc cat` from S3, and with it the static AWS key that used
+# to sit in this container's environment as MC_HOST_s3. mc has no support for
+# the EC2 instance role, so using it meant a long-lived access key pair in the
+# environment of all four services — the one credential in the fleet that could
+# not be replaced by the role litestream already uses.
+HOST_KEY_SOURCE="${ARCADE_HOST_KEY_SOURCE:-}"
 
-restore_key() {
-	key_path="$1"
-	mc_path="$2"
-	[ -z "$mc_path" ] && return 0
-	[ -f "$key_path" ] && return 0
-	echo "entrypoint: restoring $key_path from $mc_path"
-	if mc cat "$mc_path" >"$key_path.tmp" 2>/dev/null && [ -s "$key_path.tmp" ]; then
-		mv "$key_path.tmp" "$key_path"
-		chmod 600 "$key_path"
-	else
-		rm -f "$key_path.tmp"
-		echo "entrypoint: no $key_path found in bucket yet — a new one will be generated and uploaded"
-	fi
-}
-
-backup_key_when_present() {
-	key_path="$1"
-	mc_path="$2"
-	[ -z "$mc_path" ] && return 0
-	i=0
-	while [ "$i" -lt 30 ]; do
-		if [ -f "$key_path" ]; then
-			if mc stat "$mc_path" >/dev/null 2>&1; then
-				echo "entrypoint: $mc_path already present — not overwriting"
-			else
-				mc pipe "$mc_path" <"$key_path" 2>/dev/null \
-					&& echo "entrypoint: $key_path uploaded to $mc_path"
-			fi
-			return 0
-		fi
-		i=$((i + 1))
-		sleep 1
-	done
-}
+# The proxy key is deliberately absent from this script. It arrives as a Docker
+# secret at ARCADE_PROXY_KEY_PATH (/run/secrets/proxy_key), provisioned by hand
+# on the host and never in git — see the hard rules in the fleet CLAUDE.md. It
+# used to be restored from and uploaded to S3 here, which meant this container
+# held credentials that could read and overwrite the fleet's crown jewel:
+# whoever holds that key can forge any player's identity into any game. It is
+# now host state only, and the host backs it up with its own instance role.
 
 # Production guard (§4.1, failure mode 1). The dev-mode fall-through below is a
 # real convenience — local dev and CI must never need AWS credentials — but in
@@ -56,64 +35,55 @@ if [ "${ARCADE_REQUIRE_REPLICATION:-}" = "true" ] && [ -z "${LITESTREAM_REPLICA_
 	exit 1
 fi
 
-# Dev mode: no replica configured — skip litestream, still allow optional
-# S3 key backup when only MC paths are set.
-if [ -z "${LITESTREAM_REPLICA_URL:-}" ]; then
-	if [ -z "$HOST_KEY_MC_PATH" ] && [ -z "$PROXY_KEY_MC_PATH" ]; then
-		echo "entrypoint: LITESTREAM_REPLICA_URL not set — running WITHOUT replication (dev mode)"
-		exec /app/ssh-arcadelobby
+# Seed the data volume from the host's copy when this volume has no key yet —
+# a rebuilt host, or a volume recreated by a compose change. A normal boot
+# skips this entirely, because the volume already holds the key.
+#
+# This matters more for the router than for any game: its host key is the one
+# players actually pin, because play.ssharcade.dev is the only endpoint they
+# ever connect to. Losing it gives every returning player a host-key-changed
+# warning, which is indistinguishable from a MITM.
+seed_host_key() {
+	[ -n "$HOST_KEY_SOURCE" ] || return 0
+	[ -f "$HOST_KEY_PATH" ] && return 0
+	if [ ! -s "$HOST_KEY_SOURCE" ]; then
+		# Not fatal: a genuine first-ever boot has no key anywhere and the app
+		# generating one is correct. Loud, because on any later boot it means
+		# the host mount is missing and players are about to be warned.
+		echo "entrypoint: WARNING — $HOST_KEY_SOURCE is empty or absent; the app will generate a NEW host key and every returning player will see a host-key-changed warning" >&2
+		return 0
 	fi
-	echo "entrypoint: LITESTREAM_REPLICA_URL not set — running WITHOUT DB replication (key backup only)"
-	restore_key "$HOST_KEY_PATH" "$HOST_KEY_MC_PATH"
-	restore_key "$PROXY_KEY_PATH" "$PROXY_KEY_MC_PATH"
-	(
-		backup_key_when_present "$HOST_KEY_PATH" "$HOST_KEY_MC_PATH"
-		backup_key_when_present "$PROXY_KEY_PATH" "$PROXY_KEY_MC_PATH"
-	) &
+	echo "entrypoint: seeding host key from $HOST_KEY_SOURCE"
+	# Write to a temp path and promote only once the copy is complete. A
+	# partially written file at $HOST_KEY_PATH would still satisfy the app's
+	# "does a key already exist" check and skip generation, which crashes the
+	# server with "ssh: no key found".
+	if ! cp "$HOST_KEY_SOURCE" "$HOST_KEY_PATH.tmp"; then
+		rm -f "$HOST_KEY_PATH.tmp"
+		echo "entrypoint: FATAL — $HOST_KEY_SOURCE is mounted but unreadable; refusing to start rather than serve under a different host key" >&2
+		exit 1
+	fi
+	chmod 600 "$HOST_KEY_PATH.tmp"
+	mv "$HOST_KEY_PATH.tmp" "$HOST_KEY_PATH"
+}
+
+seed_host_key
+
+# Dev mode: no replica configured, skip straight to the app with a loud log
+# line. Local dev and CI must never require AWS credentials.
+if [ -z "${LITESTREAM_REPLICA_URL:-}" ]; then
+	echo "entrypoint: LITESTREAM_REPLICA_URL not set — running WITHOUT replication (dev mode)"
 	exec /app/ssh-arcadelobby
 fi
-
-restore_key "$HOST_KEY_PATH" "$HOST_KEY_MC_PATH"
-restore_key "$PROXY_KEY_PATH" "$PROXY_KEY_MC_PATH"
 
 echo "entrypoint: restoring $DB_PATH from $LITESTREAM_REPLICA_URL if needed"
 litestream restore -if-db-not-exists -if-replica-exists "$DB_PATH"
 
-if [ -n "$HOST_KEY_MC_PATH" ]; then
-	(
-		i=0
-		while [ "$i" -lt 30 ]; do
-			if [ -f "$HOST_KEY_PATH" ]; then
-				if mc stat "$HOST_KEY_MC_PATH" >/dev/null 2>&1; then
-					echo "entrypoint: host key already in bucket at $HOST_KEY_MC_PATH — not overwriting"
-				else
-					mc pipe "$HOST_KEY_MC_PATH" <"$HOST_KEY_PATH" 2>/dev/null \
-						&& echo "entrypoint: host key uploaded to $HOST_KEY_MC_PATH"
-				fi
-				break
-			fi
-			i=$((i + 1))
-			sleep 1
-		done
-	) &
-fi
-if [ -n "$PROXY_KEY_MC_PATH" ]; then
-	(
-		i=0
-		while [ "$i" -lt 30 ]; do
-			if [ -f "$PROXY_KEY_PATH" ]; then
-				if mc stat "$PROXY_KEY_MC_PATH" >/dev/null 2>&1; then
-					echo "entrypoint: proxy key already in bucket at $PROXY_KEY_MC_PATH — not overwriting"
-				else
-					mc pipe "$PROXY_KEY_MC_PATH" <"$PROXY_KEY_PATH" 2>/dev/null \
-						&& echo "entrypoint: proxy key uploaded to $PROXY_KEY_MC_PATH"
-				fi
-				break
-			fi
-			i=$((i + 1))
-			sleep 1
-		done
-	) &
-fi
+# There is deliberately no upload-the-keys-back-to-S3 step any more. It existed
+# because the keys lived only in the container's volume, so the container had to
+# seed a bucket to survive volume loss — and doing that needed S3 write
+# credentials in the container. Both keys are host state now, backed up with the
+# host's own instance role (see deploy/README.md), so this container
+# authenticates to nothing except through litestream, which uses that same role.
 
 exec litestream replicate -exec "/app/ssh-arcadelobby"

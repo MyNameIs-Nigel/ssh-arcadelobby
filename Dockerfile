@@ -17,9 +17,6 @@ RUN mkdir -p /out/data-dir && chown 65532:65532 /out/data-dir
 # ---- Litestream: pinned, pulled as a static binary --------------------------
 FROM litestream/litestream:0.5.12 AS litestream
 
-# ---- mc: MinIO Client for host/proxy key backup objects ---------------------
-FROM minio/mc:RELEASE.2025-08-13T08-35-41Z AS mc
-
 # ---- Runtime stage ----------------------------------------------------------
 FROM alpine:3.22
 
@@ -28,7 +25,6 @@ RUN apk add --no-cache ca-certificates && \
     adduser -D -H -u 65532 -G nonroot nonroot
 
 COPY --from=litestream /usr/local/bin/litestream /usr/local/bin/litestream
-COPY --from=mc /usr/bin/mc /usr/local/bin/mc
 COPY --from=build /out/ssh-arcadelobby /app/ssh-arcadelobby
 COPY --from=build --chown=65532:65532 /out/data-dir /var/lib/arcade
 COPY etc/litestream.yml /etc/litestream.yml
