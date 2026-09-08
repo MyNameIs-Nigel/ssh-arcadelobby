@@ -42,7 +42,7 @@ s3://<org>-ssharcade-data/
   farm/db/…            litestream generations per game
   moonminer/db/…
   router/db/…          lobby SQLite (alpha-warning acks, account touch)
-  keys/farm/           host keys (one-time upload, restored on boot)
+  keys/farm/           host keys (historical; no longer written or read)
   keys/moonminer/
   keys/router/         router host key + proxy key backup
   private/farm/        the farm denylist — host state that is in no repo, so
@@ -50,9 +50,20 @@ s3://<org>-ssharcade-data/
   archive/…            retired-game DB archives (e.g. idlefarmer at cutover)
 ```
 
-`private/` is deliberately outside every `keys/` prefix. The `MC_HOST_s3`
-credential the containers carry is scoped to `keys/*` only, so it cannot read
-`private/` — reaching it needs a separate grant, which is the point.
+> **Superseded 2026-09-08 — `mc` and `MC_HOST_s3` are gone.** The containers no
+> longer carry any AWS credential. SSH host keys are host state, mounted
+> read-only from `/srv/ssharcade/private/keys/<service>/ssh_host_key` exactly
+> like the proxy key and the denylist; the entrypoint seeds the data volume from
+> that mount when the volume has none. The `keys/` objects below remain as
+> historical backups and are still valid, but nothing writes them any more —
+> host state is backed up from the host with the EC2 instance role. See
+> `../deploy/README.md` for the current provisioning and backup procedure.
+
+`private/` is deliberately outside every `keys/` prefix. This mattered when the
+containers carried a `keys/*`-scoped static credential and could not reach
+`private/` at all. They now carry no credential of any kind, which is strictly
+better: the separation is enforced by the containers having no S3 access rather
+than by the scope of a key they hold.
 
 - **Versioning ON**, SSE-S3 encryption, block public access.
 - Lifecycle: litestream manages generation retention (config `retention:

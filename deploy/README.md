@@ -321,38 +321,78 @@ required) until you provision a bucket. One-time setup (docs/06):
    }
    ```
 
-3. `mc` (used only for the small host-key/proxy-key objects under
-   `keys/`) has no instance-role support, so it separately needs its own
-   IAM **user** (not the instance role) with a static access key/secret,
-   set via `MC_HOST_s3` in each service's environment (see the
-   commented-out block in each `docker-compose.yml` service). Scope this
-   one tighter than the instance role — `mc` only ever touches `keys/`,
-   never the per-game `db/` objects, and never deletes anything:
+3. **No second credential is needed.** This step used to provision a static
+   IAM **user** access key for `mc`, because `mc` has no EC2-instance-role
+   support and the containers fetched their SSH host keys from `s3://…/keys/`.
+   That key was the only long-lived AWS credential in the fleet, it sat in the
+   environment of **all four** services, and because it was embedded in a URL
+   (`MC_HOST_s3=https://<AKIA…>:<secret>@s3…`) ordinary secret redaction — which
+   keys on `KEY=value` — did not catch it.
 
-   ```json
-   {
-     "Version": "2012-10-17",
-     "Statement": [
-       {
-         "Sid": "ListKeysPrefixOnly",
-         "Effect": "Allow",
-         "Action": ["s3:ListBucket"],
-         "Resource": "arn:aws:s3:::<bucket-name>",
-         "Condition": { "StringLike": { "s3:prefix": "keys/*" } }
-       },
-       {
-         "Sid": "KeyObjectsReadWrite",
-         "Effect": "Allow",
-         "Action": ["s3:GetObject", "s3:PutObject"],
-         "Resource": "arn:aws:s3:::<bucket-name>/keys/*"
-       }
-     ]
-   }
+   `mc` is gone. SSH host keys are host state now, provisioned as read-only
+   bind mounts alongside the proxy key and the denylist:
+
+   ```
+   /srv/ssharcade/private/
+   ├── farm/denylist.toml              0400 65532:65532
+   └── keys/<service>/ssh_host_key     0400 65532:65532   (dirs 0711)
    ```
 
-4. Uncomment the `LITESTREAM_*`/`*_MC_PATH`/`MC_HOST_s3` lines for `farm`,
-   `moonminer` and `chess` (and `router`, for its own `keys/router/` backup)
-   with your real bucket name, then `docker compose up -d`.
+   **Ownership matters.** The containers run as `nonroot` (uid 65532) and a
+   bind mount preserves host ownership, so a root-owned 0400 file is
+   unreadable by the process that needs it. Directories are `0711` so the
+   container can traverse to a known path without being able to list.
+
+   Seed them once from the running volumes (they already hold the canonical
+   keys), then verify:
+
+   ```bash
+   for s in farm moonminer chess router; do
+     vol=ssharcade_${s}-data; [ "$s" = router ] && vol=ssharcade_arcade-router-data
+     sudo mkdir -p /srv/ssharcade/private/keys/$s
+     sudo docker run --rm -v ${vol}:/d:ro -v /srv/ssharcade/private/keys/$s:/out alpine:3 \
+       cp /d/ssh_host_key /out/ssh_host_key
+     sudo chown 65532:65532 /srv/ssharcade/private/keys/$s/ssh_host_key
+     sudo chmod 0400        /srv/ssharcade/private/keys/$s/ssh_host_key
+   done
+   sudo chmod 0711 /srv/ssharcade/private/keys /srv/ssharcade/private/keys/*
+   ```
+
+   Compare `md5sum` against the volume before and after. **A host key that
+   changes is player-visible**: every returning player gets their client's
+   host-key-changed warning, which looks exactly like a MITM.
+
+4. **Back the host state up with the instance role** — no static key required,
+   because the EC2 role already has `PutObject` on the whole bucket:
+
+   ```bash
+   sudo aws s3 cp /srv/ssharcade/private/farm/denylist.toml \
+     s3://ssharcade-snoigel-data/private/farm/denylist.toml --region us-east-1
+   for s in farm moonminer chess router; do
+     sudo aws s3 cp /srv/ssharcade/private/keys/$s/ssh_host_key \
+       s3://ssharcade-snoigel-data/private/keys/$s/ssh_host_key --region us-east-1
+   done
+   ```
+
+   The bucket blocks public access on all four settings and its replication
+   rule has an empty filter, so `private/` reaches the delete-protected backup
+   bucket automatically. Verify an upload by comparing the local `md5sum` with
+   the object's ETag — but only for single-part uploads: a multipart ETag ends
+   in `-<n>` and is **not** the content MD5, which makes a correct backup look
+   corrupt. Stream it back and hash that instead:
+
+   ```bash
+   aws s3 cp s3://ssharcade-snoigel-data/private/keys/router/ssh_host_key - | md5sum
+   ```
+
+5. Set your real bucket name in the `LITESTREAM_*` lines for `farm`,
+   `moonminer`, `chess` and `router`, then `docker compose up -d`.
+
+**The proxy key is unchanged and stays that way.** It is a Docker secret at
+`/srv/ssharcade/secrets/proxy_key`, provisioned by hand and never in git.
+Removing `mc` also removed the router's ability to read or overwrite it in S3,
+which is a real reduction: whoever holds that key can forge any player's
+identity into any game.
 
 Restore/kill drills for this stack are `ssh-farm`'s
 `scripts/restore-drill/` (`kill-drill.sh`, `restore-to-scratch.sh`,

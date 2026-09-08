@@ -53,15 +53,14 @@ services:
       # dev and CI leave it unset and keep the escape hatch.
       ARCADE_REQUIRE_REPLICATION: "true"
       LITESTREAM_S3_REGION: us-east-1
-      ARCADE_HOST_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/router/ssh_host_key
-      ARCADE_PROXY_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/router/proxy_key
-      MC_HOST_s3: ${MC_HOST_s3}
-      # mc has no EC2-instance-role support, so MC_HOST_s3 needs an explicit
-      # key pair scoped to the same bucket-only IAM policy as litestream's
-      # instance role (see doc 06) — litestream itself needs no keys here
-      # at all since the router doesn't use it. Sourced from a host-side
-      # /srv/ssharcade/.env (never committed) via compose variable
-      # substitution — never write a literal key pair into this file.
+      # Read-only mount of the host's canonical copy of the router's SSH host
+      # key. This replaced an `mc cat` from S3 and, with it, the MC_HOST_s3
+      # static key pair that used to sit in ALL FOUR services' environments:
+      # mc cannot use the EC2 instance role, so it needed a long-lived access
+      # key. Nothing in these containers authenticates to AWS any more except
+      # litestream, which uses the instance role. The proxy key is unaffected —
+      # it was and remains a Docker secret provisioned by hand on the host.
+      ARCADE_HOST_KEY_SOURCE: /etc/arcade/hostkey/ssh_host_key
     volumes:
       - arcade-router-data:/var/lib/arcade
       - ./games.toml:/etc/arcade/games.toml:ro
@@ -73,6 +72,10 @@ services:
       # until the container is recreated. Directory mounts resolve the path
       # dynamically and survive any write pattern.
       - ./banner:/etc/arcade/banner:ro
+      # Directory mount for the same inode-pinning reason as the two above.
+      # Its own subdirectory per service, so the router sees its own key and
+      # no other service's.
+      - ./private/keys/router:/etc/arcade/hostkey:ro
     secrets: [proxy_key]
     networks: [ssharcade]
     restart: unless-stopped
@@ -117,12 +120,15 @@ services:
       # dev and CI leave it unset and keep the escape hatch.
       FARM_REQUIRE_REPLICATION: "true"
       LITESTREAM_S3_REGION: us-east-1
-      FARM_HOST_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/farm/ssh_host_key
-      MC_HOST_s3: ${MC_HOST_s3}
+      # Read-only mount of the host's canonical copy of this service's SSH
+      # host key — see the router's note above for why the MC_HOST_s3 static
+      # key pair is gone.
+      FARM_HOST_KEY_SOURCE: /etc/farm/hostkey/ssh_host_key
       # AWS credentials for litestream come from the EC2 instance role —
       # never set LITESTREAM_ACCESS_KEY_ID/SECRET in this file.
     volumes:
       - farm-data:/var/lib/farm
+      - ./private/keys/farm:/etc/farm/hostkey:ro
       - ./proxy_keys:/etc/farm/proxy_keys:ro # PUBLIC half of the router's proxy key
       # DIRECTORY mount, not the single-file mount §5.3 sketches, and for the
       # reason already learned twice in this file (see the router's banner and
@@ -166,10 +172,13 @@ services:
       # dev and CI leave it unset and keep the escape hatch.
       MOONMINER_REQUIRE_REPLICATION: "true"
       LITESTREAM_S3_REGION: us-east-1
-      MOONMINER_HOST_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/moonminer/ssh_host_key
-      MC_HOST_s3: ${MC_HOST_s3}
+      # Read-only mount of the host's canonical copy of this service's SSH
+      # host key — see the router's note above for why the MC_HOST_s3 static
+      # key pair is gone.
+      MOONMINER_HOST_KEY_SOURCE: /etc/moonminer/hostkey/ssh_host_key
     volumes:
       - moonminer-data:/var/lib/moonminer
+      - ./private/keys/moonminer:/etc/moonminer/hostkey:ro
       - ./proxy_keys:/etc/moonminer/proxy_keys:ro # PUBLIC half(s) of proxy key
     networks: [ssharcade]
     restart: unless-stopped
@@ -215,12 +224,15 @@ services:
       # dev and CI leave it unset and keep the escape hatch.
       CHESS_REQUIRE_REPLICATION: "true"
       LITESTREAM_S3_REGION: us-east-1
-      CHESS_HOST_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/chess/ssh_host_key
-      MC_HOST_s3: ${MC_HOST_s3}
+      # Read-only mount of the host's canonical copy of this service's SSH
+      # host key — see the router's note above for why the MC_HOST_s3 static
+      # key pair is gone.
+      CHESS_HOST_KEY_SOURCE: /etc/chess/hostkey/ssh_host_key
       # AWS credentials for litestream come from the EC2 instance role —
       # never set LITESTREAM_ACCESS_KEY_ID/SECRET in this file.
     volumes:
       - chess-data:/var/lib/chess
+      - ./private/keys/chess:/etc/chess/hostkey:ro
       - ./proxy_keys:/etc/chess/proxy_keys:ro # PUBLIC half of the router's proxy key
     networks: [ssharcade]
     restart: unless-stopped
