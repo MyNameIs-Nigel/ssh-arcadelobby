@@ -120,7 +120,7 @@ in their dashboard.
 ### Security group
 
 The host's inbound rules need two additions. Both are genuinely public;
-neither can be scoped to a dev IP the way port 9922 is.
+neither can be scoped to a dev IP the way the admin SSH port is.
 
 | Port | Source | Why |
 | --- | --- | --- |

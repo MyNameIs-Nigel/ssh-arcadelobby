@@ -122,6 +122,29 @@ cp secrets/proxy_key.pub proxy_keys        # the games' trust file
 Rotation: append new public key to `proxy_keys`, restart games, swap the
 router's secret, restart router, remove old public key.
 
+Host directory layout, including the one directory that is not deployed from
+any repo:
+
+```
+/srv/ssharcade/
+  docker-compose.yml  games.toml  Caddyfile   # synced by this repo's release
+  banner/banner.toml                          # operator-edited live, never synced
+  secrets/proxy_key                           # 0400 — the crown jewel
+  proxy_keys                                  # public halves, world-readable
+  private/                                    # 0700 root:root
+    farm/denylist.toml                        # 0400 root:root
+```
+
+**The farm denylist is provisioned by hand and exists in no repository.** farm
+runs with `FARM_REQUIRE_MODERATION=true` and refuses to boot without it, so on
+a new host this must exist *before* the first `up -d farm`. It is mounted as a
+directory (`./private/farm:/etc/farm/moderation:ro`) rather than a single file,
+because a single-file bind mount pins to the inode at container start and any
+atomic-save edit would silently orphan it — which would make every SIGHUP
+reload appear to succeed while serving the old list. Back it up: with the host
+file, the S3 `private/farm/` object, and a break-glass copy outside AWS, it has
+three copies; with only the host file it has one.
+
 ## CI/CD
 
 ### Router (this repo) — `.github/workflows/`
@@ -161,14 +184,43 @@ Identical `ci.yml`; `release.yml` differs only in image name and service.
 No game repo has, or should have, a runner registered on the host.
 
 ```yaml
-# release.yml (game repo)  — test → image, and stop there
+# release.yml (game repo) — test → image → deploy over SSM
 on: { push: { branches: [main] } }
 jobs:
   test:    # vet + build + go test -race ./...
   publish: # needs: test → ghcr.io/mynameis-nigel/<repo>:latest + sha
+  deploy:  # needs: publish; environment: production
+           # OIDC → role ssharcade-deploy → ssm send-command AWS-RunShellScript
+           #   docker compose pull <svc> && up -d <svc>, then assert it is running
 ```
 
-Restarting the one service is manual, per `deploy/README.md`:
+Deploys go through **SSM Run Command against the instance**, authenticated by
+GitHub OIDC federation — no runner on the host, no long-lived AWS keys, and
+nothing on the box that a fork PR can reach. The deploy job holds exactly one
+credential, a short-lived OIDC token, and the role it assumes can call
+`ssm:SendCommand` on one instance with one document and nothing else.
+
+Two details that are load-bearing rather than stylistic:
+
+- `ssm wait command-executed` exits non-zero when the remote command failed, so
+  it is followed by `|| true` and the real stdout/stderr is printed before a
+  final `test` decides the job's fate. Without that a failed deploy gives you an
+  exit code and no logs.
+- `docker compose up -d` exits 0 even if the container it just started
+  immediately crash-loops — and with `*_REQUIRE_REPLICATION` and
+  `FARM_REQUIRE_MODERATION` in play, crash-looping is now a *designed* outcome
+  for a misconfigured deploy. The command list therefore ends by asserting the
+  service is actually running, or the deploy is not a success.
+
+This repo's own deploy additionally syncs `docker-compose.yml`, `games.toml`
+and the `Caddyfile` to the host, because the fleet compose file lives here and
+is how any game's service block reaches the box at all. A self-hosted runner
+could copy them from its checkout; SSM runs on a host that has none, so they
+travel base64-encoded inside the command and are decoded with a redirect —
+which truncates in place and keeps the inode, the same property the old job's
+`cp` provided and `mv` would have broken.
+
+Restarting one service by hand still works and is the fallback:
 
 ```bash
 cd /srv/ssharcade
@@ -181,10 +233,9 @@ auto-bail active runs), a deploy mid-session costs players a reconnect,
 never progress. The router keeps serving the menu throughout; the game
 shows `○ OFFLINE` for the seconds it's restarting.
 
-Registry/pull auth: the host is logged in to GHCR with a read-only PAT.
-Settle whether the packages are actually public **before** running
-`docker logout` anywhere — if any image is still private, logging out
-breaks every subsequent `docker compose pull`.
+Registry/pull auth: none. All four GHCR packages are public and the host holds
+no Docker credential at all — there is no `config.json` and no credential
+helper anywhere on the box, so `docker compose pull` works anonymously.
 
 ### Compose changes (adding a game)
 

@@ -12,10 +12,6 @@ on:
 # 16:34:54. Production silently reverted to the previous registry and `:latest`
 # pointed at the older image, with both runs reporting success.
 #
-# The deploy half of that race went away with the deploy job (see below); the
-# `:latest` half did not, because two overlapping runs still push the same tag
-# and the slower one still wins.
-#
 # One group for the whole workflow, so at most one release is ever in flight,
 # and cancel-in-progress so a newer merge supersedes an older one rather than
 # queueing behind it and then clobbering it. Superseding is safe here: a
@@ -44,15 +40,15 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
         run: echo "sha_short=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           push: true
@@ -60,29 +56,82 @@ jobs:
             ghcr.io/mynameis-nigel/ssh-arcadelobby:latest
             ghcr.io/mynameis-nigel/ssh-arcadelobby:${{ steps.meta.outputs.sha_short }}
 
-  # There is no `deploy:` job any more.
+  # This repo's deploy genuinely differs from its siblings, and Appendix C's
+  # "change the two service names, nothing else differs" does not hold here.
+  # The old self-hosted job also synced deploy/docker-compose.yml,
+  # deploy/games.toml and deploy/Caddyfile to /srv/ssharcade — the whole fleet's
+  # compose file lives in this repo, so a game's service block reaches the host
+  # only through this job. A self-hosted runner could copy from its own
+  # checkout; SSM runs on a host that has no checkout at all.
   #
-  # It ran `runs-on: [self-hosted, production]` — directly on the
-  # play.ssharcade.dev host. A self-hosted runner is unsafe on a repo that is
-  # going public: for `pull_request` events GitHub reads the workflow file
-  # from the PR head, so anyone who can open a fork PR can point `runs-on:` at
-  # the `self-hosted` label and execute their own code on the box — which is
-  # in the docker group, and holds every player save. The runners were
-  # deregistered and uninstalled on 2026-09-04, before any repo is flipped
-  # public. Do not reinstate one here.
-  #
-  # This job did two things nothing else does yet, so both are manual now:
-  #
-  #   1. Sync `deploy/docker-compose.yml`, `deploy/games.toml` and
-  #      `deploy/Caddyfile` to /srv/ssharcade — the whole fleet's compose file
-  #      lives here, so a change in this repo is how any game's service block
-  #      reaches the host at all. Use `cp`, never `mv`/`install`: games.toml
-  #      and the Caddyfile are single-file bind mounts and `cp` truncates in
-  #      place, keeping the inode the running containers hold open.
-  #      banner.toml stays excluded — it is operator-edited live on the host.
-  #   2. `caddy reload` after a Caddyfile change — `up -d` only recreates a
-  #      container whose *definition* changed, so a config edit is otherwise
-  #      copied and then silently ignored.
-  #
-  # See deploy/README.md, "Deploying by hand", for the full procedure, and
-  # docs/04-deployment-and-cicd.md for where this is going (OIDC + SSM).
+  # So the three files travel inside the SSM command, base64-encoded. That keeps
+  # the config pinned to exactly the commit that built the image, needs no repo
+  # access from the host and no S3 permissions on the deploy role, and works
+  # whether this repo is private or public. Decoding with a redirect truncates
+  # in place and keeps the inode, which is the property the single-file bind
+  # mounts for games.toml and the Caddyfile depend on — the same reason the old
+  # job used `cp` and never `mv`. banner.toml stays excluded: it is
+  # operator-edited live on the host.
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write # mint the OIDC token — the only credential this job holds
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          # Repo variable rather than inline: this repo goes public and the ARN
+          # carries the AWS account ID.
+          role-to-assume: ${{ vars.ARCADE_DEPLOY_ROLE }}
+          aws-region: us-east-1
+
+      - name: Deploy router and sync fleet config via SSM
+        run: |
+          set -euo pipefail
+
+          # Build the parameter document with jq rather than string
+          # interpolation. The payloads are base64 so they are shell- and
+          # JSON-safe by construction, but hand-quoting a JSON array inside a
+          # YAML block scalar inside a shell script is exactly where a deploy
+          # goes wrong.
+          jq -n \
+            --arg compose "$(base64 -w0 deploy/docker-compose.yml)" \
+            --arg games   "$(base64 -w0 deploy/games.toml)" \
+            --arg caddy   "$(base64 -w0 deploy/Caddyfile)" \
+            '{commands: [
+               "set -e",
+               "cd /srv/ssharcade",
+               "printf %s \($compose) | base64 -d > docker-compose.yml",
+               "printf %s \($games) | base64 -d > games.toml",
+               "printf %s \($caddy) | base64 -d > Caddyfile",
+               "docker compose pull router",
+               "docker compose up -d router",
+               "docker compose exec -T web caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile",
+               "sleep 10",
+               "docker compose ps --status running --quiet router | grep -q ."
+             ]}' > params.json
+
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "${{ vars.ARCADE_INSTANCE_ID }}" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy router ${{ github.sha }}" \
+            --parameters file://params.json \
+            --query Command.CommandId --output text)
+
+          # `wait` exits non-zero when the remote command failed. Swallow that so
+          # the invocation below still prints the real stdout/stderr — without the
+          # `|| true` a failed deploy gives you an exit code and no logs.
+          aws ssm wait command-executed \
+            --command-id "$CMD_ID" \
+            --instance-id "${{ vars.ARCADE_INSTANCE_ID }}" || true
+
+          aws ssm get-command-invocation \
+            --command-id "$CMD_ID" \
+            --instance-id "${{ vars.ARCADE_INSTANCE_ID }}" \
+            --query '{Status:Status,Out:StandardOutputContent,Err:StandardErrorContent}' \
+            --output json | tee result.json
+
+          test "$(jq -r .Status result.json)" = Success

@@ -1,0 +1,13 @@
+[Unit]
+Description=Alert that the ssharcade replication check failed
+Documentation=file:///srv/ssharcade/monitoring/README.md
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/replication-check
+ExecStart=/usr/local/bin/replication-alert.sh
+TimeoutStartSec=60
+
+# This unit must never fail. If it did, systemd would have a failed alerting
+# unit to report and nothing to report it to — so replication-alert.sh always
+# exits 0 and records its own failures to the journal instead.

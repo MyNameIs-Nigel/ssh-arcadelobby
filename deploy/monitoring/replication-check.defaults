@@ -1,0 +1,27 @@
+# /etc/default/replication-check — environment for replication-check.service
+# and replication-check-alert.service.
+#
+# install.sh copies this into place only if it does not already exist, so local
+# edits survive a reinstall.
+
+# Seconds a write may lag replication before the check calls it stale. Also the
+# window in which a just-restarted container is excused for having no WAL yet.
+# GRACE=900
+
+# Where a failure is announced. UNSET BY DEFAULT, which means failures are
+# recorded in the journal and page nobody — fine for a check you are actively
+# watching, not fine as a standing arrangement.
+#
+# Setting this needs two things that do not exist yet:
+#   1. An SNS topic with a confirmed subscription, e.g.
+#        aws sns create-topic --name ssharcade-alerts
+#        aws sns subscribe --topic-arn <arn> --protocol email --notification-endpoint you@example.com
+#   2. sns:Publish on that topic added to the EC2 instance role
+#      (ssharcade-litestream-role). Without it the publish fails and the alert
+#      silently degrades back to log-only — replication-alert.sh says so in the
+#      journal when that happens.
+#
+# REPLICATION_ALERT_TOPIC_ARN=arn:aws:sns:us-east-1:904233131120:ssharcade-alerts
+
+# Region used for both the S3 reads and the SNS publish.
+# AWS_REGION=us-east-1

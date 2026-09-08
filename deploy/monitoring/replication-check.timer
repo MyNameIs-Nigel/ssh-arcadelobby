@@ -1,0 +1,24 @@
+[Unit]
+Description=Run the ssharcade replication check every 5 minutes
+Documentation=file:///srv/ssharcade/monitoring/README.md
+
+[Timer]
+# 10 minutes after boot, not immediately: the containers need to come up first.
+# The check's own restart guard covers the rest of that window.
+OnBootSec=10min
+OnUnitActiveSec=5min
+
+# The check reads S3 and runs four short containers; there is no value in
+# firing it to the second, and some in not lining up with every other timer.
+AccuracySec=30s
+RandomizedDelaySec=15s
+
+# Deliberately NOT Persistent=true. Catching up on missed runs after downtime
+# would fire a burst of checks against a fleet that is still starting, which is
+# the one situation guaranteed to produce noise rather than signal.
+Persistent=false
+
+Unit=replication-check.service
+
+[Install]
+WantedBy=timers.target

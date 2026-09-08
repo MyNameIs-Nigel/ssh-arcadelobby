@@ -46,6 +46,12 @@ services:
       # Durability (doc 06): router SQLite + two small key objects.
       # Leave unset for dev mode (see entrypoint.sh).
       LITESTREAM_REPLICA_URL: s3://ssharcade-snoigel-data/router/db
+      # Refuse to serve unreplicated (§4.1, failure mode 1). Without this the
+      # entrypoint's dev-mode fall-through would let a service whose replica URL
+      # went missing keep serving players normally while nothing was being
+      # backed up — silent until someone needed a restore. Production sets it;
+      # dev and CI leave it unset and keep the escape hatch.
+      ARCADE_REQUIRE_REPLICATION: "true"
       LITESTREAM_S3_REGION: us-east-1
       ARCADE_HOST_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/router/ssh_host_key
       ARCADE_PROXY_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/router/proxy_key
@@ -96,8 +102,20 @@ services:
       # their own identity. This is the same proxy_keys trust file the
       # router's secrets provisioning generates (deploy/README.md).
       FARM_PROXY_KEYS_PATH: /etc/farm/proxy_keys
+      # Moderation (§5.3). The denylist is host state — it exists in no
+      # repository at all — so farm loads it from a file and refuses to boot
+      # without one. Only farm gets this mount; moonminer, chess and the router
+      # have no business reading it.
+      FARM_MODERATION_PATH: /etc/farm/moderation/denylist.toml
+      FARM_REQUIRE_MODERATION: "true"
       # Durability (doc 06 — canonical; leave unset for dev mode):
       LITESTREAM_REPLICA_URL: s3://ssharcade-snoigel-data/farm/db
+      # Refuse to serve unreplicated (§4.1, failure mode 1). Without this the
+      # entrypoint's dev-mode fall-through would let a service whose replica URL
+      # went missing keep serving players normally while nothing was being
+      # backed up — silent until someone needed a restore. Production sets it;
+      # dev and CI leave it unset and keep the escape hatch.
+      FARM_REQUIRE_REPLICATION: "true"
       LITESTREAM_S3_REGION: us-east-1
       FARM_HOST_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/farm/ssh_host_key
       MC_HOST_s3: ${MC_HOST_s3}
@@ -106,6 +124,18 @@ services:
     volumes:
       - farm-data:/var/lib/farm
       - ./proxy_keys:/etc/farm/proxy_keys:ro # PUBLIC half of the router's proxy key
+      # DIRECTORY mount, not the single-file mount §5.3 sketches, and for the
+      # reason already learned twice in this file (see the router's banner and
+      # games.toml notes): a single-file bind mount pins to the inode present at
+      # container start, so any host-side edit that replaces rather than
+      # truncates — most editors' atomic save, scp, mv — silently orphans it.
+      # That matters more here than anywhere else, because SIGHUP reload reads
+      # this path from inside the container: an orphaned mount would make every
+      # reload appear to succeed while serving the old list forever.
+      #
+      # Its own subdirectory rather than all of ./private, so farm sees the
+      # denylist and nothing else that later lands in there.
+      - ./private/farm:/etc/farm/moderation:ro
     networks: [ssharcade]
     restart: unless-stopped
     stop_grace_period: 45s # must exceed the 30s save-flush budget
@@ -129,6 +159,12 @@ services:
       MOONMINER_RATE_LIMIT_PER_SECOND: "50"
       # Durability — same shape as farm's:
       LITESTREAM_REPLICA_URL: s3://ssharcade-snoigel-data/moonminer/db
+      # Refuse to serve unreplicated (§4.1, failure mode 1). Without this the
+      # entrypoint's dev-mode fall-through would let a service whose replica URL
+      # went missing keep serving players normally while nothing was being
+      # backed up — silent until someone needed a restore. Production sets it;
+      # dev and CI leave it unset and keep the escape hatch.
+      MOONMINER_REQUIRE_REPLICATION: "true"
       LITESTREAM_S3_REGION: us-east-1
       MOONMINER_HOST_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/moonminer/ssh_host_key
       MC_HOST_s3: ${MC_HOST_s3}
@@ -172,6 +208,12 @@ services:
       # *is* its move list, so a restored replica is a playable game rather
       # than a position someone has to reconstruct.
       LITESTREAM_REPLICA_URL: s3://ssharcade-snoigel-data/chess/db
+      # Refuse to serve unreplicated (§4.1, failure mode 1). Without this the
+      # entrypoint's dev-mode fall-through would let a service whose replica URL
+      # went missing keep serving players normally while nothing was being
+      # backed up — silent until someone needed a restore. Production sets it;
+      # dev and CI leave it unset and keep the escape hatch.
+      CHESS_REQUIRE_REPLICATION: "true"
       LITESTREAM_S3_REGION: us-east-1
       CHESS_HOST_KEY_MC_PATH: s3/ssharcade-snoigel-data/keys/chess/ssh_host_key
       MC_HOST_s3: ${MC_HOST_s3}
