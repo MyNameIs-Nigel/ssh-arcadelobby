@@ -72,3 +72,13 @@ go build -o bin/ssh-arcadelobby ./cmd/ssh-arcadelobby   # build
 go test ./...                                            # test
 go vet ./...                                             # vet
 ```
+
+
+## Licence
+
+MIT — see [`LICENSE`](LICENSE).
+
+[`NOTICE`](NOTICE) covers third-party software redistributed inside the
+published container image (currently Litestream, Apache-2.0). Update it if the
+image ever gains another bundled binary — Apache-2.0 requires that attribution
+to travel with the artifact, not merely with the source.

@@ -1,0 +1,43 @@
+ssharcade router (ssh-arcadelobby)
+==================================
+
+Third-party software distributed in the published container image
+(ghcr.io/mynameis-nigel/ssh-arcadelobby).
+
+ssh-arcadelobby itself is MIT-licensed; see LICENSE. The entries below cover
+software redistributed *inside the image*, rather than depended on as source.
+
+
+Litestream
+----------
+
+  Version:  0.5.12  (pinned in Dockerfile)
+  Source:   https://github.com/benbjohnson/litestream
+  Licence:  Apache License 2.0
+            https://github.com/benbjohnson/litestream/blob/main/LICENSE
+
+Used as the replication process that supervises the router binary. Copied
+into the image as a prebuilt static binary from litestream/litestream:0.5.12,
+unmodified. It is a separate program run as the container's supervising
+process, not linked into this program's code.
+
+Apache-2.0 section 4 requires this attribution to travel with the binary,
+which is why this file exists even though none of this repository's own code
+is Apache-licensed.
+
+
+Go module dependencies
+----------------------
+
+Every Go dependency is permissive (MIT or BSD-3-Clause) and is compiled into
+the binary rather than redistributed as a separate work. See go.mod for the
+list, and each module's own repository for its licence text.
+
+
+Base image
+----------
+
+The runtime is alpine:3.22 plus ca-certificates. Packages arriving with the
+base image are covered by their own licences as published by Alpine Linux
+(https://pkgs.alpinelinux.org) and are not enumerated here — the same scope
+boundary ssh-chess's NOTICE draws.
