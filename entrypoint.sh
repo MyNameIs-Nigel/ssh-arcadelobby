@@ -1,7 +1,7 @@
 #!/bin/sh
 # Container entrypoint implementing the canonical fleet durability pattern
 # (docs/06-fleet-data-durability.md) for the router: SQLite player prefs plus
-# the SSH host key that gives play.ssharcade.dev its identity.
+# the SSH host key that gives ssharcade.dev its identity.
 set -eu
 
 DB_PATH="${ARCADE_DB_PATH:-/var/lib/arcade/arcade.db}"
@@ -40,7 +40,7 @@ fi
 # skips this entirely, because the volume already holds the key.
 #
 # This matters more for the router than for any game: its host key is the one
-# players actually pin, because play.ssharcade.dev is the only endpoint they
+# players actually pin, because ssharcade.dev is the only endpoint they
 # ever connect to. Losing it gives every returning player a host-key-changed
 # warning, which is indistinguishable from a MITM.
 seed_host_key() {

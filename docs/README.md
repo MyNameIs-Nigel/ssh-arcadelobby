@@ -1,7 +1,7 @@
 # ssh-arcadelobby — Build Plan Index
 
 This folder specifies the **ssharcade router**: the single public SSH
-endpoint (`play.ssharcade.dev`) that shows an arcade menu and bridges
+endpoint (`ssharcade.dev`) that shows an arcade menu and bridges
 players into individual game servers. Each numbered doc is a self-contained
 task an agent can pick up independently. Read this index first.
 

@@ -16,7 +16,6 @@ service restarted on the host. Adding a game touches the compose file and
 
 ```
 DNS:  ssharcade.dev       A     →  <elastic IP>    (ssh + web redirect)
-      play.ssharcade.dev  A     →  <elastic IP>    (ssh, the documented name)
       www.ssharcade.dev   CNAME →  Vercel          (the website; not this host)
 EC2 host (t3.small+, Docker + compose plugin):
   /srv/ssharcade/
@@ -161,7 +160,7 @@ three copies; with only the host file it has one.
   `deploy/README.md`, "Deploying by hand".
 
 There used to be a third job, `runs-on: [self-hosted, production]`, running on
-a runner installed on the `play.ssharcade.dev` host. That shape was chosen
+a runner installed on the `ssharcade.dev` host. That shape was chosen
 because the host's real sshd is locked to one dev IP and GitHub-hosted runners
 come from an ever-changing range that would never match it, so an
 `appleboy/ssh-action`-style job would just time out. It is not survivable on a
@@ -279,7 +278,7 @@ container is recreated.
 - [ ] No game port reachable from the public internet (scan the host).
       The scan's expected answer is now 22, 80, 443 and the dev sshd — 80
       and 443 are Caddy and are *supposed* to be open.
-- [ ] `ssh ssharcade.dev` and `ssh play.ssharcade.dev` both reach the menu.
+- [ ] `ssh ssharcade.dev` reaches the menu.
 - [ ] `curl -sI https://ssharcade.dev` → 301 to `https://www.ssharcade.dev`,
       with a certificate that validates.
 - [ ] `docker compose exec web ping router` fails to resolve — the edge

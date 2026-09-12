@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # replication-check.sh — detects failure mode 1 (silent replication stop), §4.4.
 #
-# Install to /usr/local/bin/replication-check.sh on play.ssharcade.dev, wired to a
+# Install to /usr/local/bin/replication-check.sh on ssharcade.dev, wired to a
 # systemd timer every 5 minutes with SNS/email on non-zero exit.
 #
 # WHY THIS DIFFERS FROM THE PLAN'S §4.4 VERSION

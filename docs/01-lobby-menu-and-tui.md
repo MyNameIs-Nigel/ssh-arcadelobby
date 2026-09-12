@@ -80,7 +80,7 @@ for {
 ### The menu (80×24, same phosphor-blue language as the games)
 
 ```
-┌◇ SSHARCADE ────────────────────────────── play.ssharcade.dev ┐
+┌◇ SSHARCADE ─────────────────────────────────── ssharcade.dev ┐
 │                                                              │
 │   ▸ ● MOON MINER     Drill asteroids, dodge pirates.         │
 │       extraction · 4 worlds · push-your-luck                 │
@@ -107,6 +107,9 @@ for {
   live while the menu is open.
 - A slim footer credit line may show the player's key fingerprint
   (truncated) so "your key is your account" is tangible.
+- Render the entire terminal viewport with a fixed dark background via
+  Lip Gloss, including terminals larger than 80×24 and the resize prompt,
+  so the lobby remains legible regardless of the player's terminal theme.
 
 ### Config (env)
 

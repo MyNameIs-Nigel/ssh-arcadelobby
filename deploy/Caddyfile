@@ -51,11 +51,3 @@
 ssharcade.dev {
 	redir https://www.ssharcade.dev{uri} permanent
 }
-
-# Players are told to run `ssh play.ssharcade.dev`. Sooner or later one of
-# them pastes that into a browser instead of a terminal. Without this block
-# the name resolves here, gets a TLS handshake for a site Caddy has no
-# config for, and the player sees a certificate error rather than the site.
-play.ssharcade.dev {
-	redir https://www.ssharcade.dev{uri} permanent
-}

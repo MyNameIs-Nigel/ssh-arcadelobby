@@ -8,7 +8,7 @@ import (
 
 const noPTYMessage = "ssharcade needs an interactive terminal.\r\n" +
 	"Connect with a normal SSH session (your client should request a PTY).\r\n" +
-	"Example: ssh -t play.ssharcade.dev\r\n"
+	"Example: ssh -t ssharcade.dev\r\n"
 
 // RequirePTY rejects sessions without an allocated pseudo-terminal.
 func RequirePTY() func(ssh.Handler) ssh.Handler {

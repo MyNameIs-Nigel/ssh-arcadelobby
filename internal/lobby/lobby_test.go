@@ -391,7 +391,7 @@ func TestViewShowsMenu(t *testing.T) {
 	view := renderPlain(f.model)
 	for _, want := range []string{
 		"SSHARCADE",
-		"play.ssharcade.dev",
+		"ssharcade.dev",
 		"MOON MINER",
 		"IDLE FARMER",
 		"Drill.",
@@ -406,6 +406,29 @@ func TestViewShowsMenu(t *testing.T) {
 	}
 	if strings.Contains(view, "Grow.") {
 		t.Error("offline game should not show its tagline")
+	}
+	if strings.Contains(view, "play."+"ssharcade.dev") {
+		t.Error("view still advertises the retired play subdomain")
+	}
+}
+
+func TestViewPaintsEntireTerminalWithFixedBackground(t *testing.T) {
+	f := newFixture(t, twoGames())
+	f.update(t, tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	view := f.model.View().Content
+	if !strings.Contains(view, "\x1b[48;5;234m") {
+		t.Fatal("view does not set the fixed 256-color background")
+	}
+
+	lines := strings.Split(stripANSI(view), "\n")
+	if len(lines) != 40 {
+		t.Fatalf("painted view height = %d, want 40", len(lines))
+	}
+	for i, line := range lines {
+		if width := lipgloss.Width(line); width != 120 {
+			t.Fatalf("painted row %d width = %d, want 120", i, width)
+		}
 	}
 }
 

@@ -18,19 +18,19 @@ const (
 	innerW      = frameW - 2 // content columns between the │ borders
 	contentRows = frameH - 2
 
-	hostLabel   = "play.ssharcade.dev"
+	hostLabel   = "ssharcade.dev"
 	windowTitle = "SSHARCADE"
 
 	// Layout slots inside the content region (see doc 01's mock).
-	gamesTopRow        = 1 // first game name line when no banner
-	maxVisible         = 7 // game rows that fit (2 lines each)
-	bannerTopRow       = 0 // operator notice when enabled
-	bannerReserveRows  = 4 // blank rows reserved above the game list
-	identityRow   = 16
-	flashRow      = 18
-	fingerRow     = 20
-	nameColWidth  = 14
-	rowIndent     = 3
+	gamesTopRow       = 1 // first game name line when no banner
+	maxVisible        = 7 // game rows that fit (2 lines each)
+	bannerTopRow      = 0 // operator notice when enabled
+	bannerReserveRows = 4 // blank rows reserved above the game list
+	identityRow       = 16
+	flashRow          = 18
+	fingerRow         = 20
+	nameColWidth      = 14
+	rowIndent         = 3
 )
 
 // View renders the 80×24 menu, centered when the terminal is larger, and
@@ -44,6 +44,7 @@ func (m Model) View() tea.View {
 	} else {
 		body = m.viewFrame()
 	}
+	body = styleScreen.Width(max(m.width, 1)).Height(max(m.height, 1)).Render(body)
 
 	v := tea.NewView(body)
 	v.AltScreen = true
