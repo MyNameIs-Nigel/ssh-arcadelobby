@@ -27,7 +27,7 @@ lobby stays up and marks it `○ OFFLINE`.
 
 ## Status
 
-**Live** at `ssharcade.dev`, router `1.2.0` (alpha channel), fronting
+**Live** at `ssharcade.dev`, router `1.2.1` (alpha channel), fronting
 Idle Farmer and Moon Miner. Every push to `main` rebuilds and publishes the
 image; putting it on the host is a separate manual step
 ([`deploy/README.md`](deploy/README.md) § "Deploying by hand"). `main` is
