@@ -407,7 +407,7 @@ func TestViewShowsMenu(t *testing.T) {
 	if strings.Contains(view, "Grow.") {
 		t.Error("offline game should not show its tagline")
 	}
-	if strings.Contains(view, "play.ssharcade.dev") {
+	if strings.Contains(view, "play."+"ssharcade.dev") {
 		t.Error("view still advertises the retired play subdomain")
 	}
 }

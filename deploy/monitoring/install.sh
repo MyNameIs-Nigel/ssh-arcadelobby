@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # install.sh — install the replication check, its alerting, and a 5-minute timer
-# on play.ssharcade.dev.
+# on ssharcade.dev.
 #
 #   scp -r -P <port> deploy/monitoring ec2-user@ssharcade.dev:/tmp/monitoring
 #   ssh -p <port> ec2-user@ssharcade.dev 'sudo /tmp/monitoring/install.sh'

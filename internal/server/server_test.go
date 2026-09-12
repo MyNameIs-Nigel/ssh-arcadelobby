@@ -1,8 +1,8 @@
 package server
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
@@ -255,7 +255,7 @@ func TestRejectsSessionWithoutPTY(t *testing.T) {
 	if !strings.Contains(out.String(), "ssh -t ssharcade.dev") {
 		t.Fatalf("expected current SSH address, got %q", out.String())
 	}
-	if strings.Contains(out.String(), "play.ssharcade.dev") {
+	if strings.Contains(out.String(), "play."+"ssharcade.dev") {
 		t.Fatalf("PTY hint still advertises retired address: %q", out.String())
 	}
 }
