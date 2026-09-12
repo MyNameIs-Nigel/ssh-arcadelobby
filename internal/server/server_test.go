@@ -252,6 +252,12 @@ func TestRejectsSessionWithoutPTY(t *testing.T) {
 	if !strings.Contains(out.String(), "interactive terminal") {
 		t.Fatalf("expected PTY hint, got %q", out.String())
 	}
+	if !strings.Contains(out.String(), "ssh -t ssharcade.dev") {
+		t.Fatalf("expected current SSH address, got %q", out.String())
+	}
+	if strings.Contains(out.String(), "play.ssharcade.dev") {
+		t.Fatalf("PTY hint still advertises retired address: %q", out.String())
+	}
 }
 
 func TestMenuRendersGamesAndIdentity(t *testing.T) {
