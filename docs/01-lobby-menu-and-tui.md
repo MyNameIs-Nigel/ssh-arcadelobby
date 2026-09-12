@@ -109,7 +109,8 @@ for {
   (truncated) so "your key is your account" is tangible.
 - Render the entire terminal viewport with a fixed dark background via
   Lip Gloss, including terminals larger than 80×24 and the resize prompt,
-  so the lobby remains legible regardless of the player's terminal theme.
+  and set Bubble Tea's view-level background color so ANSI resets return to
+  that dark color instead of the player's terminal theme.
 
 ### Config (env)
 

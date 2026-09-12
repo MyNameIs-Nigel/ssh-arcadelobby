@@ -48,6 +48,7 @@ func (m Model) View() tea.View {
 
 	v := tea.NewView(body)
 	v.AltScreen = true
+	v.BackgroundColor = screenBackground
 	v.WindowTitle = windowTitle
 	v.MouseMode = tea.MouseModeCellMotion
 	return v

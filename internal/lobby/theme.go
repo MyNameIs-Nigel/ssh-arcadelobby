@@ -4,7 +4,8 @@ import "charm.land/lipgloss/v2"
 
 // The arcade menu speaks the same phosphor-blue language as the games.
 var (
-	styleScreen        = lipgloss.NewStyle().Background(lipgloss.Color("234"))
+	screenBackground   = lipgloss.Color("234")
+	styleScreen        = lipgloss.NewStyle().Background(screenBackground)
 	styleFrame         = lipgloss.NewStyle().Foreground(lipgloss.Color("24"))
 	styleTitle         = lipgloss.NewStyle().Foreground(lipgloss.Color("45")).Bold(true)
 	styleHost          = lipgloss.NewStyle().Foreground(lipgloss.Color("31"))

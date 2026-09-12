@@ -416,12 +416,15 @@ func TestViewPaintsEntireTerminalWithFixedBackground(t *testing.T) {
 	f := newFixture(t, twoGames())
 	f.update(t, tea.WindowSizeMsg{Width: 120, Height: 40})
 
-	view := f.model.View().Content
-	if !strings.Contains(view, "\x1b[48;5;234m") {
+	view := f.model.View()
+	if view.BackgroundColor != screenBackground {
+		t.Fatalf("terminal background = %v, want %v", view.BackgroundColor, screenBackground)
+	}
+	if !strings.Contains(view.Content, "\x1b[48;5;234m") {
 		t.Fatal("view does not set the fixed 256-color background")
 	}
 
-	lines := strings.Split(stripANSI(view), "\n")
+	lines := strings.Split(stripANSI(view.Content), "\n")
 	if len(lines) != 40 {
 		t.Fatalf("painted view height = %d, want 40", len(lines))
 	}
