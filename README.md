@@ -7,9 +7,8 @@ One address, every game:
 ssh ssharcade.dev
 ```
 
-`ssh play.ssharcade.dev` reaches the same place and is not going away. Both
-names are A records for the one Elastic IP; `https://ssharcade.dev` bounces
-to the website at `www.ssharcade.dev`. See
+The same apex hostname serves SSH on port 22 and redirects web traffic to
+`www.ssharcade.dev`. See
 [deploy/README.md](deploy/README.md#dns-the-apex-and-the-web-redirector)
 for why the apex has to serve both protocols.
 
@@ -28,7 +27,7 @@ lobby stays up and marks it `○ OFFLINE`.
 
 ## Status
 
-**Live** at `play.ssharcade.dev`, router `1.1.2` (alpha channel), fronting
+**Live** at `ssharcade.dev`, router `1.2.0` (alpha channel), fronting
 Idle Farmer and Moon Miner. Every push to `main` rebuilds and publishes the
 image; putting it on the host is a separate manual step
 ([`deploy/README.md`](deploy/README.md) § "Deploying by hand"). `main` is

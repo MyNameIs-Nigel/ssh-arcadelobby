@@ -108,14 +108,11 @@ redirect instead of on the whole site.
 | --- | --- | --- |
 | `ssharcade.dev` | `A` | `<elastic IP>` |
 | `www.ssharcade.dev` | `CNAME` | `cname.vercel-dns.com` |
-| `play.ssharcade.dev` | `A` | `<elastic IP>` |
 
-`play.` stays exactly as it is. Every existing doc, README and player
-muscle-memory points at it, and it costs nothing to keep serving both
-names. Vercel's project needs `www.ssharcade.dev` added as a domain, and
-its apex domain removed — leaving the apex registered to the Vercel project
-while the A record points here just produces a misconfigured-domain warning
-in their dashboard.
+Vercel's project needs `www.ssharcade.dev` added as a domain, and its apex
+domain removed — leaving the apex registered to the Vercel project while the
+A record points here just produces a misconfigured-domain warning in their
+dashboard.
 
 ### Security group
 
@@ -152,7 +149,6 @@ staging line in the `Caddyfile` first.
 
 ```bash
 ssh ssharcade.dev                       # the point of the exercise
-ssh play.ssharcade.dev                  # must still work
 curl -sI http://ssharcade.dev  | head -1   # 308 -> https (Caddy's own redirect)
 curl -sI https://ssharcade.dev | head -2   # 301 -> https://www.ssharcade.dev
 docker compose logs web --tail 20       # "certificate obtained successfully"
