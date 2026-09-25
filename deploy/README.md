@@ -108,6 +108,7 @@ redirect instead of on the whole site.
 | --- | --- | --- |
 | `ssharcade.dev` | `A` | `<elastic IP>` |
 | `www.ssharcade.dev` | `CNAME` | `cname.vercel-dns.com` |
+| `api.ssharcade.dev` | `A` | `<elastic IP>` — the player-count API; see "Live player-count API" below |
 
 Vercel's project needs `www.ssharcade.dev` added as a domain, and its apex
 domain removed — leaving the apex registered to the Vercel project while the
@@ -194,6 +195,86 @@ the `ssharcade` network — it cannot reach the router, the games, or the
 proxy key. It is also the only service in the file that adds a capability
 back (`NET_BIND_SERVICE`, to bind 80/443 as a root process with everything
 else dropped). Keep both properties if you touch that service block.
+
+## Live player-count API
+
+`https://api.ssharcade.dev/v1/players` returns the live player count as
+JSON. The router writes it to a file every 5s; Caddy serves that file.
+**The API contract — fields, headers, the staleness rule, and how the
+website should poll it — is in
+[`docs/07-live-player-count.md`](../docs/07-live-player-count.md).** This
+section is only the host side.
+
+### How it's wired
+
+- `router` writes `/var/lib/arcade-stats/players.json`
+  (`ARCADE_STATS_PATH`), replacing it atomically each time.
+- `web` mounts the same `arcade-stats` volume read-only at `/srv/stats`
+  and serves exactly that one file at `/v1/players`; every other path on
+  the name is a 404.
+- `arcade-stats` is a **tmpfs** volume: in memory, gone when both
+  containers stop, rewritten within 5s of the router starting. There is
+  nothing in it to back up.
+- `web` is still on `edge` only. The volume is the only thing it shares
+  with the arcade, and all it can ever contain is public counts.
+
+### Turning it on (one time)
+
+Order matters, for the same ACME reason as the apex (see "Order of
+operations" above): Caddy must not load the `api.ssharcade.dev` block
+before that name resolves here, or its certificate validations fail and
+count against Let's Encrypt's hourly limit.
+
+1. **Add the DNS record**: `api.ssharcade.dev A <elastic IP>` (same address
+   as the apex). No security-group change — 80 and 443 are already open.
+   Wait until `dig +short api.ssharcade.dev` returns the Elastic IP.
+2. **Sync the files and recreate `router` and `web`** — both service
+   definitions changed (new volume and env), so both must be recreated, and
+   the fresh `web` reads the new Caddyfile at start:
+
+   ```bash
+   cd <checkout>/deploy
+   cp docker-compose.yml games.toml Caddyfile /srv/ssharcade/
+   cd /srv/ssharcade
+   docker compose pull router
+   docker compose up -d router web
+   ```
+
+   Recreating `web` drops in-flight apex redirects for a second or two;
+   nothing else notices. `caddy-data` survives, so no certificate is
+   re-issued for the apex.
+
+   If `release.yml`'s SSM `deploy` job is live for your repo, merging does
+   this step for you (it runs `docker compose up -d router web`, which
+   recreates `web` only when its definition changed) — so step 1 must be
+   done **before the merge**, not before a manual deploy.
+
+### Verifying
+
+```bash
+dig +short api.ssharcade.dev                                  # the Elastic IP
+curl -s https://api.ssharcade.dev/v1/players | jq .           # "online": true
+curl -sI https://api.ssharcade.dev/v1/players | grep -i -e access-control -e cache-control
+docker compose logs router | grep "player-count"              # "publishing player-count snapshot"
+docker compose logs web --tail 20                             # certificate obtained for api.ssharcade.dev
+```
+
+Then `ssh ssharcade.dev` in another terminal and watch `players` go up
+within 5s.
+
+### When it looks wrong
+
+| Symptom | Likely cause |
+| --- | --- |
+| `404` on `/v1/players` | The router has not written yet (just started, or `ARCADE_STATS_PATH` missing from its environment). Check `docker compose logs router`. |
+| `403` | File or directory not world-readable — the volume's `mode=0755` or the router's `0644` file mode was changed. Caddy has no capability to override permissions. |
+| `"online": false` that never clears | The router is stopped or crash-looping: `docker compose ps router`. |
+| `updated_at` frozen, `"online": true` | The router died without a clean shutdown and is not running. Clients already treat this as unknown after 15s (docs/07). |
+| Router log: `player-count snapshot write failed` | The volume is not writable by uid 65532 — its `driver_opts` lost `uid=65532`, or the volume was created before they were set. Compose never updates an existing volume's options, so remove it: `docker compose stop router web && docker compose rm -f router web && docker volume rm ssharcade_arcade-stats && docker compose up -d router web`. Nothing is lost — it only ever holds the snapshot. |
+| TLS errors on `api.` only | The DNS record was missing or wrong when Caddy loaded the block. Fix DNS; Caddy retries on its own. |
+
+To turn the API off, remove the `api.ssharcade.dev` block and reload Caddy;
+the router can keep writing the file harmlessly.
 
 ## Deploying by hand
 

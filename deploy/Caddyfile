@@ -1,4 +1,6 @@
-# ssharcade.dev edge — redirect only, no site content on this host.
+# ssharcade.dev edge — the apex redirect, plus the one-file player-count
+# API at api.ssharcade.dev (bottom of this file). Still no site content on
+# this host.
 #
 # WHY THIS EXISTS: DNS has no notion of ports. One A record for a name
 # serves both the SSH router on 22 and anything listening on 80/443, so
@@ -50,4 +52,45 @@
 # `temporary` (302) is the reversible choice.
 ssharcade.dev {
 	redir https://www.ssharcade.dev{uri} permanent
+}
+
+# Live player-count API (docs/07-live-player-count.md). One static JSON file,
+# written every few seconds by the router into the shared `arcade-stats`
+# volume and served here read-only. This keeps the property the apex block
+# depends on: Caddy stays on the `edge` network with no route to the router
+# or the games — the volume is the only thing the two containers share, and
+# all it can ever hold is public counts.
+#
+# ORDERING: add the `api.ssharcade.dev` A record (same Elastic IP as the
+# apex) and let it propagate BEFORE this block reaches the host, for the
+# same ACME reason as the apex — see deploy/README.md, "Live player-count
+# API".
+api.ssharcade.dev {
+	header {
+		# Public, read-only data meant for browsers on www.ssharcade.dev and
+		# its Vercel preview deploys, so no origin allow-list to maintain.
+		# A plain GET with no custom headers needs no preflight.
+		Access-Control-Allow-Origin *
+		# Date is not CORS-safelisted, so browser JS cannot read it unless
+		# exposed. Clients need it to age the snapshot against this host's
+		# clock rather than their own, which may be minutes off.
+		Access-Control-Expose-Headers Date
+		# Shorter than the router's 5s write interval: a CDN or browser
+		# can absorb a burst, but never serve a count more than one write
+		# behind.
+		Cache-Control "public, max-age=4"
+		X-Content-Type-Options nosniff
+	}
+
+	handle /v1/players {
+		root * /srv/stats
+		# Named explicitly so nothing else in the volume — including the
+		# router's dot-named temp files mid-write — is ever reachable.
+		rewrite * /players.json
+		file_server
+	}
+
+	handle {
+		respond 404
+	}
 }

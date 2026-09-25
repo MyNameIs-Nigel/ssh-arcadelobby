@@ -61,8 +61,15 @@ services:
       # litestream, which uses the instance role. The proxy key is unaffected —
       # it was and remains a Docker secret provisioned by hand on the host.
       ARCADE_HOST_KEY_SOURCE: /etc/arcade/hostkey/ssh_host_key
+      # Live player-count snapshot (docs/07): rewritten every 5s into the
+      # arcade-stats volume, which `web` serves as api.ssharcade.dev/v1/players.
+      ARCADE_STATS_PATH: /var/lib/arcade-stats/players.json
     volumes:
       - arcade-router-data:/var/lib/arcade
+      # Writable here, read-only in `web`. Its own volume, never a subdir of
+      # arcade-router-data: mounting that into Caddy would put the router's
+      # database one misconfigured rewrite away from the public internet.
+      - arcade-stats:/var/lib/arcade-stats
       - ./games.toml:/etc/arcade/games.toml:ro
       # Directory mount, not a single-file mount: a single-file bind mount
       # pins to the inode present at container start. Any host-side edit
@@ -263,6 +270,10 @@ services:
   # 404ing, because one A record necessarily serves port 22 and port 443
   # alike. It answers browsers with a 301 to www.ssharcade.dev, where the
   # real site stays on Vercel. See ./Caddyfile for the full rationale.
+  # It also serves api.ssharcade.dev/v1/players — one static JSON file the
+  # router writes into the shared arcade-stats volume (docs/07). That volume
+  # is the only thing it shares with the arcade; it still has no network
+  # route to any of it.
   web:
     # Major-version tag, not a floating :latest and not a pinned minor.
     # This is the one image in the file we don't build, so a surprise major
@@ -285,6 +296,9 @@ services:
       # against Let's Encrypt's rate limits.
       - caddy-data:/data
       - caddy-config:/config
+      # The router's player-count snapshot (see the arcade-stats volume
+      # below). Read-only: Caddy only ever serves it.
+      - arcade-stats:/srv/stats:ro
     # NOT on [ssharcade], and that is the point. This is the only container
     # on the box with an unauthenticated public listener; it has no reason
     # to reach the games, the router, or the proxy key, so it cannot.
@@ -328,6 +342,23 @@ volumes:
   chess-data: {}
   caddy-data: {}
   caddy-config: {}
+  # The live player-count snapshot, shared router(rw) → web(ro). tmpfs, not
+  # disk: the data is worthless after a restart and rewritten every 5s, so
+  # there is nothing to persist or back up and no reason to wear the EBS
+  # volume. uid/gid make the mount writable by the router's non-root user
+  # (65532) — without them a fresh volume is root-owned and every write
+  # fails. mode 0755 plus the router's 0644 file mode is what lets Caddy
+  # read it: Caddy runs as root but with every capability dropped, so it
+  # gets ordinary permission checks, not root's.
+  #
+  # One mount shared by both containers, alive while either uses it: a
+  # router-only redeploy keeps serving the router's final "online": false
+  # snapshot until the new router writes its first one.
+  arcade-stats:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=1m,uid=65532,gid=65532,mode=0755"
 
 secrets:
   proxy_key:

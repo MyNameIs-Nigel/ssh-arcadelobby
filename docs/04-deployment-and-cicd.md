@@ -17,11 +17,12 @@ service restarted on the host. Adding a game touches the compose file and
 ```
 DNS:  ssharcade.dev       A     →  <elastic IP>    (ssh + web redirect)
       www.ssharcade.dev   CNAME →  Vercel          (the website; not this host)
+      api.ssharcade.dev   A     →  <elastic IP>    (player-count JSON, doc 07)
 EC2 host (t3.small+, Docker + compose plugin):
   /srv/ssharcade/
     docker-compose.yml        (this repo, deployed copy)
     games.toml                (mounted into router, hot-reloaded)
-    Caddyfile                 (mounted into web, apex → www redirect)
+    Caddyfile                 (mounted into web, apex → www redirect + api.ssharcade.dev)
     secrets/proxy_key         (ed25519 private key, chmod 600)
   volumes: arcade-router-data, moonminer-data, idlefarmer-data, caddy-data
   networks: ssharcade (bridge, internal service DNS: moonminer, idlefarmer)

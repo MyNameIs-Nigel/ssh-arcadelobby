@@ -46,6 +46,11 @@ func (srv *Server) handle(s ssh.Session) {
 		}
 	}
 
+	// Counted from here: past the caps and PTY checks, so a rejected
+	// connection is never a player.
+	seat := srv.presence.Join(fp)
+	defer seat.Leave()
+
 	pump := newInputPump(s)
 	_, winCh, _ := s.Pty()
 	wp := newWinchPump(winCh)
@@ -81,11 +86,13 @@ func (srv *Server) handle(s ssh.Session) {
 		// and resizes from the winch pump.
 		pr, pw := io.Pipe()
 		pump.SetDest(pw)
+		seat.Enter(game.ID)
 		err := bridge.Run(s, game, srv.proxyKey, bridge.Options{
 			Input:  pr,
 			Winch:  wp.Attach(),
 			Logger: srv.logger,
 		})
+		seat.Lobby()
 		wp.Detach()
 		pump.SetDest(nil)
 		// Unblock the bridge's stdin copier and any in-flight pump write.
