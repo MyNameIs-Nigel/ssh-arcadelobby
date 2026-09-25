@@ -23,6 +23,7 @@ import (
 
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/banner"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/config"
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/presence"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/store"
 )
@@ -36,6 +37,7 @@ type Server struct {
 	banner   *banner.Source
 	store    *store.Store
 	proxyKey gossh.Signer
+	presence *presence.Tracker
 }
 
 // New constructs and configures the SSH server over the given registry.
@@ -58,7 +60,10 @@ func New(cfg config.Config, logger *slog.Logger, reg *registry.Registry, ban *ba
 		cfg.RateLimitMaxEntries,
 	)
 
-	srv := &Server{cfg: cfg, logger: logger, registry: reg, banner: ban, store: st, proxyKey: proxyKey}
+	srv := &Server{
+		cfg: cfg, logger: logger, registry: reg, banner: ban, store: st,
+		proxyKey: proxyKey, presence: presence.NewTracker(),
+	}
 
 	// No idle timeout at the transport: the lobby enforces its own via the
 	// UI, and during a bridged game only the game's idle rules apply.
@@ -91,6 +96,12 @@ func (srv *Server) sessionLoop() wish.Middleware {
 	return func(ssh.Handler) ssh.Handler {
 		return srv.handle
 	}
+}
+
+// Presence is the live tally of who is in the menu and in which game — the
+// source for the player-count snapshot (docs/07).
+func (s *Server) Presence() *presence.Tracker {
+	return s.presence
 }
 
 // ListenAndServe starts accepting SSH connections.

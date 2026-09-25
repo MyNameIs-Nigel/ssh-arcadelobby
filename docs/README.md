@@ -62,6 +62,7 @@ bridge side.
 | `internal/proxyproto/` | the identity-forwarding protocol: encode (router side) — games vendor their own parse side per the spec |
 | `internal/bridge/` | upstream dial, PTY request, stream piping, winch forwarding, terminal reset |
 | `internal/lobby/` | Bubble Tea menu model (keyboard + mouse) |
+| `internal/presence/` | live player tally (menu / per game) and the JSON snapshot behind `api.ssharcade.dev/v1/players` |
 | `var/` | host key + proxy key in dev (gitignored) |
 
 ## Build order
@@ -71,6 +72,7 @@ Phase 1 (parallel):  01 (lobby TUI, against a fake registry)
                      03 (registry + health prober)
 Phase 2:             02 (bridge + protocol; needs 03's registry types)
 Phase 3:             04 (deployment + CI/CD)   05 (tests; start anytime after its target lands)
+Phase 4:             07 (live player-count API; needs 01's session loop, 03, 04)
 ```
 
 ## Document map
@@ -83,6 +85,7 @@ Phase 3:             04 (deployment + CI/CD)   05 (tests; start anytime after it
 | [04-deployment-and-cicd.md](04-deployment-and-cicd.md) | Arcade-wide docker-compose, secrets, GitHub Actions CI/CD for router **and** the per-game workflow template |
 | [05-tests.md](05-tests.md) | Protocol/unit tests + in-process bridge integration tests |
 | [06-fleet-data-durability.md](06-fleet-data-durability.md) | **Canonical** fleet pattern: Litestream → S3 replication so player data survives instance loss |
+| [07-live-player-count.md](07-live-player-count.md) | **Canonical** public API: `GET https://api.ssharcade.dev/v1/players` — schema, staleness rule, browser-polling contract for the website |
 
 ## Conventions
 

@@ -34,6 +34,12 @@ image; putting it on the host is a separate manual step
 still the production branch — treat it as such — it just no longer ships
 itself.
 
+The live player count is public JSON at
+`https://api.ssharcade.dev/v1/players`, written by the router and served by
+the fleet's Caddy — see
+[docs/07-live-player-count.md](docs/07-live-player-count.md) for the API and
+how to poll it.
+
 `docs/` remains the build plan: [docs/README.md](docs/README.md) is the
 index; each numbered doc is a self-contained task an agent can pick up
 independently. The identity-forwarding protocol in

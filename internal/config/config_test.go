@@ -28,6 +28,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.LobbyIdleTimeout != 5*time.Minute || cfg.ProbeInterval != 15*time.Second {
 		t.Fatalf("unexpected duration defaults: %+v", cfg)
 	}
+	if cfg.StatsPath != "" || cfg.StatsInterval != 5*time.Second {
+		t.Fatalf("unexpected stats defaults (snapshot must be off unless set): %+v", cfg)
+	}
 	if cfg.MaxConnections != 200 || cfg.MaxSessionsPerKey != 4 {
 		t.Fatalf("unexpected caps: %+v", cfg)
 	}
@@ -48,6 +51,7 @@ func TestInvalidValues(t *testing.T) {
 		"ARCADE_RATE_LIMIT_BURST":     "0",
 		"ARCADE_PROBE_INTERVAL":       "10ms",
 		"ARCADE_LOBBY_IDLE_TIMEOUT":   "-5m",
+		"ARCADE_STATS_INTERVAL":       "500ms",
 	}
 	for key, val := range cases {
 		t.Run(key, func(t *testing.T) {

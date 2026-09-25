@@ -17,6 +17,8 @@ type Config struct {
 	GamesPath           string
 	BannerPath          string
 	DBPath              string
+	StatsPath           string // "" = player-count snapshot disabled
+	StatsInterval       time.Duration
 	LobbyIdleTimeout    time.Duration
 	ProbeInterval       time.Duration
 	MaxConnections      int
@@ -43,6 +45,9 @@ func Load() (Config, error) {
 		LogLevel:     envOr("ARCADE_LOG_LEVEL", "info"),
 		LogFormat:    envOr("ARCADE_LOG_FORMAT", "text"),
 	}
+	// Live player-count snapshot (docs/07). Off unless set: production
+	// points it at the volume Caddy serves as api.ssharcade.dev.
+	cfg.StatsPath = os.Getenv("ARCADE_STATS_PATH")
 	if cfg.ListenPort, err = envIntOr("ARCADE_LISTEN_PORT", 22); err != nil {
 		return Config{}, err
 	}
@@ -50,6 +55,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.ProbeInterval, err = envDurationOr("ARCADE_PROBE_INTERVAL", 15*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.StatsInterval, err = envDurationOr("ARCADE_STATS_INTERVAL", 5*time.Second); err != nil {
 		return Config{}, err
 	}
 	if cfg.MaxConnections, err = envIntOr("ARCADE_MAX_CONNECTIONS", 200); err != nil {
@@ -92,6 +100,9 @@ func Load() (Config, error) {
 	}
 	if cfg.ProbeInterval < time.Second {
 		return Config{}, fmt.Errorf("ARCADE_PROBE_INTERVAL must be at least 1s")
+	}
+	if cfg.StatsInterval < time.Second {
+		return Config{}, fmt.Errorf("ARCADE_STATS_INTERVAL must be at least 1s")
 	}
 	if cfg.MaxConnections < 1 {
 		return Config{}, fmt.Errorf("ARCADE_MAX_CONNECTIONS must be at least 1")

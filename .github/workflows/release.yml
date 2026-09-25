@@ -72,6 +72,11 @@ jobs:
   # mounts for games.toml and the Caddyfile depend on — the same reason the old
   # job used `cp` and never `mv`. banner.toml stays excluded: it is
   # operator-edited live on the host.
+  #
+  # `up -d router web`, not just router: `web` is recreated only when its
+  # service definition changed (a no-op otherwise), which is the one case
+  # where a Caddy reload alone is not enough — a new volume mount such as
+  # arcade-stats (docs/07) only appears in a recreated container.
   deploy:
     needs: publish
     runs-on: ubuntu-latest
@@ -108,7 +113,7 @@ jobs:
                "printf %s \($games) | base64 -d > games.toml",
                "printf %s \($caddy) | base64 -d > Caddyfile",
                "docker compose pull router",
-               "docker compose up -d router",
+               "docker compose up -d router web",
                "docker compose exec -T web caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile",
                "sleep 10",
                "docker compose ps --status running --quiet router | grep -q ."

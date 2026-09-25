@@ -2,8 +2,8 @@
 // one public address, an arcade menu, and a transparent bridge into the
 // selected game's own SSH server.
 //
-// Wiring: config → registry (+ health prober) → SSH server → graceful
-// shutdown. See docs/README.md for the architecture and per-task specs.
+// Wiring: config → registry (+ health prober) → SSH server → player-count
+// snapshot → graceful shutdown. See docs/README.md for the architecture and per-task specs.
 package main
 
 import (
@@ -20,6 +20,7 @@ import (
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/banner"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/config"
 	applog "github.com/mynameis-nigel/ssh-arcadelobby/internal/log"
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/presence"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/server"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/store"
@@ -72,6 +73,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Live player-count snapshot (docs/07-live-player-count.md): a JSON file
+	// Caddy serves as https://api.ssharcade.dev/v1/players. Off in dev
+	// unless ARCADE_STATS_PATH is set.
+	var stats *presence.Publisher
+	if cfg.StatsPath != "" {
+		stats, err = presence.NewPublisher(srv.Presence(), reg, presence.Options{
+			Path:     cfg.StatsPath,
+			Interval: cfg.StatsInterval,
+			Logger:   logger,
+		})
+		if err != nil {
+			logger.Error("player-count snapshot init failed", "path", cfg.StatsPath, "error", err)
+			os.Exit(1)
+		}
+		stats.Start()
+		logger.Info("publishing player-count snapshot", "path", cfg.StatsPath, "interval", cfg.StatsInterval)
+	}
+
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
@@ -84,6 +103,12 @@ func main() {
 
 	sig := <-done
 	logger.Info("shutdown signal received", "signal", sig.String())
+
+	// First, so the API reports the arcade offline for the whole shutdown
+	// rather than a count that is about to be kicked.
+	if stats != nil {
+		stats.Close()
+	}
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelShutdown()
