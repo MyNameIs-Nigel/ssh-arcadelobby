@@ -72,7 +72,7 @@ rollback() {
   if [ -z "$previous" ]; then
     echo 'No previous local image is available; stopping the failed new container.' >&2
     docker compose stop "$SERVICE" || return 1
-    return 1
+    return 0
   fi
   set_image "$previous" || return 1
   start || return 1

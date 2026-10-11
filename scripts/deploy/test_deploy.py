@@ -102,6 +102,7 @@ class DeployTest(unittest.TestCase):
     def test_down_service_without_cached_image_stops_failed_container(self):
         self.assertNotEqual(self.run_deploy(down=True, bad=True, missing_cache=True).returncode, 0)
         self.assertTrue(self.state.get('stopped'))
+        self.assertNotIn('ROLLBACK FAILED', self.result.stderr)
         self.assertIn('FARM_IMAGE='+self.old_image, (self.path/'.env').read_text())
         self.assertNotIn('Previous build restored', self.result.stdout)
 
@@ -117,6 +118,7 @@ class DeployTest(unittest.TestCase):
         self.assertNotEqual(self.run_deploy(down=True, first=True, bad=True).returncode, 0)
         self.assertTrue(self.state.get('stopped'), self.result.stdout+self.result.stderr)
         self.assertFalse((self.path/'.env').exists())
+        self.assertNotIn('ROLLBACK FAILED', self.result.stderr)
         self.assertNotIn('Previous build restored', self.result.stdout)
 
     def test_down_service_rollback_requires_healthy_banner(self):
