@@ -1,5 +1,11 @@
 # Fleet deploy
 
+> Release workflow update: production now deploys published `vMAJOR.MINOR.PATCH`
+> releases, with build-injected versions and persistent digest selection.
+> See the repository `docs/releasing.md` for the current procedure. Older
+> push-to-main and local-latest deployment descriptions below are historical.
+
+
 Bootstraps the single EC2 host that runs the whole fleet (docs/04's
 topology: one host, one Elastic IP, the router public on 22, every game
 private). See `docs/04-deployment-and-cicd.md` for the full architecture

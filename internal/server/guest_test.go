@@ -81,7 +81,7 @@ func allowGuestGames(t *testing.T, c *config.Config) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw = []byte(strings.ReplaceAll(string(raw), "[[games]]", "[[games]]\nallow_guests = true\nversion = \"1.0.0\""))
+	raw = []byte(strings.ReplaceAll(string(raw), "[[games]]", "[[games]]\nallow_guests = true\nalpha_warning = true\nversion = \"1.0.0\""))
 	if err := os.WriteFile(c.GamesPath, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}

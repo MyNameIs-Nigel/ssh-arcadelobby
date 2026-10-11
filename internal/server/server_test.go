@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/ed25519"
@@ -24,6 +25,7 @@ import (
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/store"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/testutil"
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/version"
 )
 
 func quietLogger() *slog.Logger {
@@ -437,7 +439,16 @@ func TestAlphaWarningShownOncePerKeyAndGame(t *testing.T) {
 		}
 	})
 
-	_, reg, addr := testArcade(t, map[string]string{"alpha": fake.Addr}, nil)
+	_, reg, addr := testArcade(t, map[string]string{"alpha": fake.Addr}, func(c *config.Config) {
+		raw, err := os.ReadFile(c.GamesPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw = []byte(strings.ReplaceAll(string(raw), "[[games]]", "[[games]]\nalpha_warning = true"))
+		if err := os.WriteFile(c.GamesPath, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	})
 	waitOnline(t, reg, "alpha")
 	for _, g := range reg.Games() {
 		if g.ID == "alpha" && g.DetectedVersion != "1.0.0" {
@@ -549,4 +560,21 @@ func stripANSI(s string) string {
 		}
 	}
 	return b.String()
+}
+
+func TestRouterBannerAdvertisesBuildVersion(t *testing.T) {
+	_, _, addr := testArcade(t, map[string]string{"game": "127.0.0.1:1"}, nil)
+	conn, err := net.DialTimeout("tcp", addr, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+	line, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.TrimSpace(line), "SSH-2.0-"+version.Version; got != want {
+		t.Fatalf("banner = %q, want %q", got, want)
+	}
 }

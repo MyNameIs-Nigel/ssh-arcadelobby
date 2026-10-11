@@ -8,7 +8,7 @@ name: CI
 # signal on it.
 on:
   push:
-    branches-ignore: [main]
+    branches: ["**"]
   workflow_dispatch:
 
 jobs:
@@ -19,6 +19,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - run: python3 scripts/deploy/test_deploy.py
       - run: go vet ./...
       - run: go build ./...
       - run: go test -race ./...
+      - name: Verify build-injected version
+        run: go test -tags releasecheck -ldflags="-X github.com/mynameis-nigel/ssh-arcadelobby/internal/version.Version=2.4.3" ./internal/version ./internal/server ./internal/lobby

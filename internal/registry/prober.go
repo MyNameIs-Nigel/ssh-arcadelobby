@@ -101,7 +101,7 @@ func probe(addr string, timeout time.Duration) (string, error) {
 }
 
 // bannerVersion extracts a fleet version from an "SSH-2.0-..." banner line,
-// if the game embeds one: each fleet game's internal/version const is
+// if the game embeds one: each fleet game's build-injected version is
 // wired into its wish server's Version option (renders as the literal
 // softwareversion component, e.g. "SSH-2.0-1.0.0"), so this needs no
 // protocol beyond what the prober already reads for liveness. A game that
@@ -114,7 +114,7 @@ func bannerVersion(line string) string {
 	if i := strings.IndexByte(rest, ' '); i >= 0 {
 		rest = rest[:i] // drop the optional trailing "comments" field (RFC 4253)
 	}
-	if versionPattern.MatchString(rest) {
+	if rest == "dev" || versionPattern.MatchString(rest) {
 		return rest
 	}
 	return ""

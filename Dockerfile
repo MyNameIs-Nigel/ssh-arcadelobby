@@ -9,7 +9,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X github.com/mynameis-nigel/ssh-arcadelobby/internal/version.Version=${VERSION}" \
         -o /out/ssh-arcadelobby ./cmd/ssh-arcadelobby
 
 RUN mkdir -p /out/data-dir && chown 65532:65532 /out/data-dir

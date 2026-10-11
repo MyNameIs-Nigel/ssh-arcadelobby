@@ -3,7 +3,7 @@
 #
 # The three registries and who reads each:
 #   deploy/games.toml  PRODUCTION. Synced to /srv/ssharcade/games.toml by
-#                      .github/workflows/release.yml on every push to main,
+#                      .github/workflows/release.yml when a release is published,
 #                      mounted read-only at /etc/arcade/games.toml. This is
 #                      the only file that changes what players see.
 #   games.local.toml   The local fleet — scripts/dev-local-fleet.sh sets
@@ -24,7 +24,7 @@ addr    = "farm:2222"                 # private-network host:port
 host_key = ""                         # optional: pinned public key (authorized_keys
                                       # format). Empty = accept any (isolated net).
 order   = 10
-# No `version` here: farm's wish server embeds its internal/version const in
+# No `version` here: farm's wish server embeds its build-injected version in
 # its SSH banner, live-detected by the health-check prober every probe cycle
 # (docs/03's "Fleet version scheme") — no registry edit when a version bumps.
 
@@ -41,6 +41,7 @@ order   = 20
 
 [[games]]
 id      = "chess"
+alpha_warning = true # Explicit warning; independent of the release version.
 allow_guests = false
 name    = "GAMBIT"
 tagline = "Bots or humans. Real clocks."

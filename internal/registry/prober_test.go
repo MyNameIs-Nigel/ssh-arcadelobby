@@ -129,7 +129,7 @@ func TestFlapDamping(t *testing.T) {
 }
 
 // TestProbeDetectsVersionFromBanner: a game embedding a fleet version in
-// its SSH banner (internal/version's const, wired via the wish server's
+// its SSH banner (the build-injected version, wired via the wish server's
 // Version option) gets it read automatically — no games.toml edit needed.
 func TestProbeDetectsVersionFromBanner(t *testing.T) {
 	addr := testutil.StartCustomBannerListener(t, "SSH-2.0-1.2.3\r\n")
@@ -141,7 +141,7 @@ func TestProbeDetectsVersionFromBanner(t *testing.T) {
 }
 
 // TestProbeIgnoresNonFleetBanner: a banner that doesn't embed a
-// <channel>.<major>.<minor>-shaped version (a third-party SSH server, or a
+// major.minor.patch-shaped version (a third-party SSH server, or a
 // legacy game predating fleet versioning) yields no detected version, and
 // must not affect online/offline status either way.
 func TestProbeIgnoresNonFleetBanner(t *testing.T) {
@@ -218,4 +218,17 @@ func TestReportFlipsOfflineImmediately(t *testing.T) {
 
 	// Reporting an unknown game must not panic or notify.
 	r.Report("nope", fmt.Errorf("x"))
+}
+
+func TestBannerVersionRecognizesReleasesAndDevelopment(t *testing.T) {
+	for _, tc := range []struct{ banner, want string }{
+		{"SSH-2.0-2.4.3\r\n", "2.4.3"},
+		{"SSH-2.0-dev\r\n", "dev"},
+		{"SSH-2.0-01.2.3\r\n", ""},
+		{"SSH-2.0-OpenSSH_9.6\r\n", ""},
+	} {
+		if got := bannerVersion(tc.banner); got != tc.want {
+			t.Errorf("bannerVersion(%q) = %q, want %q", tc.banner, got, tc.want)
+		}
+	}
 }

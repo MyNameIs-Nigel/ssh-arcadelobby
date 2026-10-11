@@ -347,11 +347,7 @@ func (m Model) activate() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) needsAlphaWarning(g registry.GameStatus) bool {
-	v := g.DetectedVersion
-	if v == "" {
-		v = g.Version
-	}
-	if registry.Channel(v) != "alpha" {
+	if !g.AlphaWarning {
 		return false
 	}
 	if m.prefs == nil {

@@ -216,7 +216,7 @@ func TestAboutOverlayCapturesInput(t *testing.T) {
 	}
 }
 
-func TestMenuShowsGameVersionWithChannel(t *testing.T) {
+func TestMenuShowsGameVersionWithoutChannel(t *testing.T) {
 	src := &fakeSource{games: []registry.GameStatus{
 		{Game: registry.Game{ID: "moon", Name: "MOON MINER", Tagline: "Drill.", Descriptors: []string{"x"}, Version: "1.0.0"}, Online: true},
 		{Game: registry.Game{ID: "farm", Name: "IDLE FARMER", Tagline: "Grow.", Descriptors: []string{"y"}, Version: "2.0.0"}, Online: true},
@@ -224,10 +224,13 @@ func TestMenuShowsGameVersionWithChannel(t *testing.T) {
 	}}
 	f := newFixture(t, src)
 	view := renderPlain(f.model)
-	if !strings.Contains(view, "v1.0.0 alpha") {
+	if strings.Contains(view, " alpha") || strings.Contains(view, " beta") {
+		t.Fatal("version inferred a release channel")
+	}
+	if !strings.Contains(view, "v1.0.0") {
 		t.Fatal("alpha game version not rendered")
 	}
-	if !strings.Contains(view, "v2.0.0 beta") {
+	if !strings.Contains(view, "v2.0.0") {
 		t.Fatal("beta game version not rendered")
 	}
 	if strings.Contains(view, "z · v") {
@@ -242,7 +245,7 @@ func TestMenuPrefersDetectedVersionOverStatic(t *testing.T) {
 	}}
 	f := newFixture(t, src)
 	view := renderPlain(f.model)
-	if !strings.Contains(view, "v1.2.0 alpha") {
+	if !strings.Contains(view, "v1.2.0") {
 		t.Fatal("live-detected version should win over the static games.toml value")
 	}
 	if strings.Contains(view, "v1.0.0") {
@@ -254,7 +257,7 @@ func TestAboutShowsRouterVersion(t *testing.T) {
 	f := newFixture(t, twoGames())
 	f.press(t, "?")
 	view := renderPlain(f.model)
-	if !strings.Contains(view, "router v"+version.Version+" ("+version.Channel+")") {
+	if !strings.Contains(view, "router v"+version.Version) {
 		t.Fatal("router version not rendered on about screen")
 	}
 }
@@ -491,7 +494,7 @@ func TestViewShowsOperatorBanner(t *testing.T) {
 
 func TestAlphaWarningBlocksUntilContinue(t *testing.T) {
 	src := &fakeSource{games: []registry.GameStatus{
-		{Game: registry.Game{ID: "moon", Name: "MOON MINER", Tagline: "Drill.", Version: "1.0.0"}, Online: true},
+		{Game: registry.Game{ID: "moon", Name: "MOON MINER", Tagline: "Drill.", Version: "2.4.3", AlphaWarning: true}, Online: true},
 	}}
 	f := newFixture(t, src)
 	cmd := f.press(t, "enter")
@@ -516,8 +519,8 @@ func TestAlphaWarningBlocksUntilContinue(t *testing.T) {
 
 func TestAlphaWarningDontShowPersistsPerGame(t *testing.T) {
 	src := &fakeSource{games: []registry.GameStatus{
-		{Game: registry.Game{ID: "moon", Name: "MOON MINER", Tagline: "Drill.", Version: "1.0.0"}, Online: true},
-		{Game: registry.Game{ID: "derby", Name: "PACKET DERBY", Tagline: "Soon.", Version: "1.0.0"}, Online: true},
+		{Game: registry.Game{ID: "moon", Name: "MOON MINER", Tagline: "Drill.", Version: "2.4.3", AlphaWarning: true}, Online: true},
+		{Game: registry.Game{ID: "derby", Name: "PACKET DERBY", Tagline: "Soon.", Version: "2.4.3", AlphaWarning: true}, Online: true},
 	}}
 	prefs := &fakePrefs{}
 	f := &fixture{src: src, now: time.Unix(1_700_000_000, 0)}
@@ -548,25 +551,25 @@ func TestAlphaWarningDontShowPersistsPerGame(t *testing.T) {
 	}
 }
 
-func TestBetaGameSkipsAlphaWarning(t *testing.T) {
+func TestUnflaggedGameSkipsAlphaWarning(t *testing.T) {
 	src := &fakeSource{games: []registry.GameStatus{
-		{Game: registry.Game{ID: "farm", Name: "IDLE FARMER", Tagline: "Grow.", Version: "2.0.0"}, Online: true},
+		{Game: registry.Game{ID: "farm", Name: "IDLE FARMER", Tagline: "Grow.", Version: "1.0.0"}, Online: true},
 	}}
 	f := newFixture(t, src)
 	if cmd := f.press(t, "enter"); !isQuit(cmd) {
-		t.Fatal("beta game should launch directly")
+		t.Fatal("unflagged game should launch directly")
 	}
 }
 
-func TestAlphaUsesDetectedVersion(t *testing.T) {
+func TestAlphaWarningIgnoresDetectedVersion(t *testing.T) {
 	src := &fakeSource{games: []registry.GameStatus{
-		{Game: registry.Game{ID: "moon", Name: "MOON MINER", Tagline: "Drill.", Version: "2.0.0"},
+		{Game: registry.Game{ID: "moon", Name: "MOON MINER", Tagline: "Drill.", Version: "1.0.0"},
 			Online: true, DetectedVersion: "1.2.0"},
 	}}
 	f := newFixture(t, src)
 	f.press(t, "enter")
-	if !f.model.alphaOpen {
-		t.Fatal("detected alpha version should trigger warning")
+	if f.model.alphaOpen {
+		t.Fatal("version must not trigger an alpha warning")
 	}
 }
 

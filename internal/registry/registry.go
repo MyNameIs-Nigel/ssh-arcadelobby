@@ -12,7 +12,6 @@ import (
 	"os"
 	"regexp"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -23,30 +22,16 @@ import (
 // Game is one games.toml entry. Snapshots handed out by the registry are
 // immutable copies — mutating one never affects the registry.
 type Game struct {
-	AllowGuests bool
-	ID          string
-	Name        string
-	Tagline     string
-	Addr        string
-	Descriptors []string
-	HostKey     gossh.PublicKey // nil = unpinned (accept any on the private net)
-	Order       int
-	Version     string // fleet scheme <channel>.<major>.<minor>; "" = unversioned
-}
-
-// Channel names the release channel a fleet version string belongs to.
-// The scheme is <channel>.<major>.<minor>: the leading number is the
-// channel (1 = alpha, 2 = beta), the second is the major release, and the
-// third is the minor patch/hotfix. Unknown channels and unversioned games
-// return "".
-func Channel(version string) string {
-	switch {
-	case strings.HasPrefix(version, "1."):
-		return "alpha"
-	case strings.HasPrefix(version, "2."):
-		return "beta"
-	}
-	return ""
+	AllowGuests  bool
+	ID           string
+	Name         string
+	Tagline      string
+	Addr         string
+	Descriptors  []string
+	HostKey      gossh.PublicKey // nil = unpinned (accept any on the private net)
+	Order        int
+	Version      string // major.minor.patch; "" = unversioned
+	AlphaWarning bool   // explicit operator warning, independent of version
 }
 
 // GameStatus is a Game plus its probed liveness.
@@ -320,15 +305,16 @@ func (r *Registry) notify() {
 }
 
 type fileGame struct {
-	AllowGuests bool     `toml:"allow_guests"`
-	ID          string   `toml:"id"`
-	Name        string   `toml:"name"`
-	Tagline     string   `toml:"tagline"`
-	Descriptors []string `toml:"descriptors"`
-	Addr        string   `toml:"addr"`
-	HostKey     string   `toml:"host_key"`
-	Order       int      `toml:"order"`
-	Version     string   `toml:"version"`
+	AllowGuests  bool     `toml:"allow_guests"`
+	ID           string   `toml:"id"`
+	Name         string   `toml:"name"`
+	Tagline      string   `toml:"tagline"`
+	Descriptors  []string `toml:"descriptors"`
+	Addr         string   `toml:"addr"`
+	HostKey      string   `toml:"host_key"`
+	Order        int      `toml:"order"`
+	Version      string   `toml:"version"`
+	AlphaWarning bool     `toml:"alpha_warning"`
 }
 
 type fileRoot struct {
@@ -337,11 +323,11 @@ type fileRoot struct {
 
 var idPattern = regexp.MustCompile(`^[a-z0-9-]{1,24}$`)
 
-// versionPattern enforces the fleet scheme <channel>.<major>.<minor> (see
-// Channel). Optional per entry — an omitted version renders as unversioned
+// versionPattern accepts release major.minor.patch versions.
+// Optional per entry: an omitted version renders as unversioned
 // rather than rejecting a registry, so a router upgrade never bricks on a
 // hand-maintained production file — but a present one must be well-formed.
-var versionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+var versionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
 func loadFile(path string) ([]Game, time.Time, error) {
 	// Stat before read: if a write races the read, the recorded mtime
@@ -394,17 +380,18 @@ func validate(entries []fileGame) ([]Game, error) {
 			return nil, fmt.Errorf("games[%d] (%s): addr %q: %w", i, e.ID, e.Addr, err)
 		}
 		if e.Version != "" && !versionPattern.MatchString(e.Version) {
-			return nil, fmt.Errorf("games[%d] (%s): version %q must match <channel>.<major>.<minor> (e.g. 1.0.0 alpha, 2.0.0 beta)", i, e.ID, e.Version)
+			return nil, fmt.Errorf("games[%d] (%s): version %q must match major.minor.patch (e.g. 2.4.3)", i, e.ID, e.Version)
 		}
 		g := Game{
-			AllowGuests: e.AllowGuests,
-			ID:          e.ID,
-			Name:        e.Name,
-			Tagline:     e.Tagline,
-			Addr:        e.Addr,
-			Descriptors: append([]string(nil), e.Descriptors...),
-			Order:       e.Order,
-			Version:     e.Version,
+			AllowGuests:  e.AllowGuests,
+			ID:           e.ID,
+			Name:         e.Name,
+			Tagline:      e.Tagline,
+			Addr:         e.Addr,
+			Descriptors:  append([]string(nil), e.Descriptors...),
+			Order:        e.Order,
+			Version:      e.Version,
+			AlphaWarning: e.AlphaWarning,
 		}
 		if e.HostKey != "" {
 			key, _, _, _, err := gossh.ParseAuthorizedKey([]byte(e.HostKey))

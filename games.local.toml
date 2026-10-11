@@ -28,6 +28,7 @@ order   = 20
 
 [[games]]
 id      = "chess"
+alpha_warning = true # Explicit warning; independent of the release version.
 allow_guests = false
 name    = "GAMBIT"
 tagline = "Bots or humans. Real clocks."

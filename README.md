@@ -126,3 +126,8 @@ ssh -p 2222 -o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-inte
 
 See [the approved architecture](docs/08-guest-access-plan.md) and
 [protocol v2](docs/02-bridge-and-identity-protocol.md).
+
+## Releases
+
+See [Publishing a release](docs/releasing.md) for versioning, GitHub environment
+setup, deployment order, and rollback. Production deploys on published releases.

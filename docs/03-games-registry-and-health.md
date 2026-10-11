@@ -60,22 +60,14 @@ active (log an error); at boot with no good registry, exit non-zero.
 
 ### Fleet version scheme
 
-Every fleet component versions as `<channel>.<major>.<minor>`:
+Every component uses `MAJOR.MINOR.PATCH`, injected from a GitHub release tag
+such as `v2.4.3` during the Docker build. Local builds use `dev`. The version
+contains no maturity/channel information.
 
-- the **first** number is the release channel — `1.x.y` = alpha, `2.x.y` = beta
-- the **second** number (`x`) is the major release
-- the **third** number (`y`) is the minor patch / hotfix
-
-**Live-detected, not hand-maintained.** Each fleet game pins its version in
-an `internal/version` const and wires it into its wish server's `Version`
-option, which becomes the literal SSH version-exchange banner (e.g.
-`SSH-2.0-1.0.0`). The health-check prober already reads this banner on
-every probe cycle to decide liveness (`internal/registry/prober.go`'s
-`bannerVersion`) — extracting the version costs no extra round trip. The
-lobby menu renders whichever version was last read this way
-(`GameStatus.DetectedVersion`), formatted as e.g. `v2.0.0 beta` after the
-descriptors, and it's sticky across a probe failure so it keeps showing
-the last-known value while a game is `○ OFFLINE` rather than blanking out.
+Each game advertises this build version in its SSH banner (`SSH-2.0-2.4.3`).
+The health prober reads it on every probe cycle, and the lobby displays
+`v2.4.3`. The last detected version is retained while a game is offline.
+See [Publishing a release](releasing.md) for the deployment workflow.
 
 `games.toml`'s `version` key is now only a **manual fallback**: it renders
 only if `DetectedVersion` is empty — before a game's first successful
@@ -120,12 +112,14 @@ way it subscribes to registry changes.
 
 ### Alpha-game entry warning
 
-Games whose fleet version resolves to channel `alpha` (`1.x.y`, from live
-`DetectedVersion` with `games.toml` fallback) show a one-time warning
-overlay before bridging. Players may check **Don't show this again for
-this game**; the choice is stored per `(SSH key fingerprint, game id)` in
-the router's SQLite file (`ARCADE_DB_PATH`). Beta and unversioned games
-skip the gate entirely.
+Set `alpha_warning = true` on a `[[games]]` entry to show the existing alpha
+warning before launching that game. Omitted/false means no warning, regardless
+of version. GAMBIT retains its warning in the shipped production registry.
+There is no beta setting or version-derived classification.
+
+Players can choose **Don't show this again for this game**. Existing per-player,
+per-game acknowledgements remain valid; guest acknowledgements last only for
+their lobby session. The setting hot-reloads with the registry.
 
 ### Health prober
 

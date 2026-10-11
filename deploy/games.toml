@@ -18,7 +18,7 @@ addr    = "farm:2222"                # private-network host:port
 host_key = ""                         # optional: pinned public key (authorized_keys
                                       # format). Empty = accept any (isolated net).
 order   = 10
-# No `version` here: farm's wish server embeds its internal/version const in
+# No `version` here: farm's wish server embeds its build-injected version in
 # its SSH banner, so the router's health-check prober reads it live on every
 # probe cycle (see docs/03's "Fleet version scheme"). Setting a static value
 # here would just be a second, driftable copy of the same truth.
@@ -36,6 +36,7 @@ order   = 20
 
 [[games]]
 id      = "chess"
+alpha_warning = true # Explicit warning; independent of the release version.
 allow_guests = false
 name    = "GAMBIT"
 tagline = "Bots or humans. Real clocks."

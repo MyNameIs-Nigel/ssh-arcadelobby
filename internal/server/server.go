@@ -26,6 +26,7 @@ import (
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/config"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/presence"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/version"
 )
 
 // Server wraps the Wish SSH server and related middleware.
@@ -74,6 +75,7 @@ func New(cfg config.Config, logger *slog.Logger, reg *registry.Registry, ban *ba
 	// UI, and during a bridged game only the game's idle rules apply.
 	s, err := wish.NewServer(
 		wish.WithAddress(cfg.ListenAddr()),
+		func(s *ssh.Server) error { s.Version = version.Version; return nil },
 		wish.WithHostKeyPath(cfg.HostKeyPath),
 		wish.WithPublicKeyAuth(publicKeyAuth),
 		ssh.WrapConn(func(ctx ssh.Context, c net.Conn) net.Conn {
