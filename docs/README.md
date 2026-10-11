@@ -87,7 +87,6 @@ Phase 4:             07 (live player-count API; needs 01's session loop, 03, 04)
 | [05-tests.md](05-tests.md) | Protocol/unit tests + in-process bridge integration tests |
 | [06-fleet-data-durability.md](06-fleet-data-durability.md) | **Canonical** fleet pattern: Litestream → S3 replication so player data survives instance loss |
 | [07-live-player-count.md](07-live-player-count.md) | **Canonical** public API: `GET https://api.ssharcade.dev/v1/players` — schema, staleness rule, browser-polling contract for the website |
-
 | [08-guest-access-plan.md](08-guest-access-plan.md) | Approved guest architecture and design decisions |
 | [guest-auth-bug-tally.md](guest-auth-bug-tally.md) | Verified defects fixed during implementation |
 
