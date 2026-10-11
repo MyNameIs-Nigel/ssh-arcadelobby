@@ -313,7 +313,21 @@ var aboutLines = []string{
 func (m Model) fillAbout(content []string) {
 	lines := aboutLines
 	if m.guest {
-		lines = []string{"", "ABOUT SSHARCADE", "", "Guest progress is temporary and resets when you leave a game.", "Only games marked GUEST OK allow guests.", "", "Generate a keypair in a local terminal:", "  ssh-keygen -t ed25519", "Reconnect with your key to start saving. Guest progress cannot", "be transferred to an account.", "", "If your key is not picked automatically: ssh -i ~/.ssh/id_ed25519 " + hostLabel, "", "Your private key stays on your machine.", "", "PRESS ANY KEY TO RETURN"}
+		lines = []string{
+			"", "ABOUT SSHARCADE", "",
+			"Guest progress is temporary and resets when you leave a game.",
+			"Only games marked GUEST OK allow guests.", "",
+			"Generate a keypair in a local terminal:",
+			"  ssh-keygen -t ed25519",
+			"Reconnect with your key to start saving. Guest progress cannot",
+			"be transferred to an account.", "",
+			"Keep your private key; decline any overwrite prompt.",
+			"If needed, choose your key explicitly:",
+			"  ssh -i ~/.ssh/id_ed25519 " + hostLabel,
+			"Keep the same SSH username to reopen a saved slot.", "",
+			"Your private key stays on your machine.", "",
+			"PRESS ANY KEY TO RETURN",
+		}
 	}
 	for i, line := range lines {
 		if i >= len(content) {

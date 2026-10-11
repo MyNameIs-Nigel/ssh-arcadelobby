@@ -314,7 +314,8 @@ The output includes seasonal sky width/height mismatches and a picker overlay ex
 
 ## Implementation review
 
-Game PRs: [Farm #40](https://github.com/MyNameIs-Nigel/ssh-farm/pull/40),
+PRs: [Lobby #19](https://github.com/MyNameIs-Nigel/ssh-arcadelobby/pull/19),
+[Farm #40](https://github.com/MyNameIs-Nigel/ssh-farm/pull/40),
 [Moon Miner #64](https://github.com/MyNameIs-Nigel/ssh-moonminer/pull/64),
 [Chess #27](https://github.com/MyNameIs-Nigel/ssh-chess/pull/27).
 
@@ -341,7 +342,7 @@ and remaining platform limits are recorded in the PR validation evidence.
 | Guest transport caps accompany shell caps. | Prevents idle authenticated transports from consuming the keyed connection reserve. |
 | Access rejection does not mark a game offline. | A healthy backend can reject policy, capacity or credentials independently of liveness. |
 | Guest and keyed disconnect copy differs, without guarantees of a final save. | Guest runs are disposable; a crash can interrupt the latest keyed write. |
-| Full bug tally lives in [guest-auth-bug-tally.md](guest-auth-bug-tally.md). | Counts verified pre-existing defects separately from implementing the requested feature. |
+| Full bug tally lives in [guest-auth-bug-tally.md](guest-auth-bug-tally.md). | Counts verified application defects, including the reviewed guest exit regression, separately from feature gaps and temporary test setup errors. |
 
 ### Local end-to-end evidence
 
@@ -357,3 +358,9 @@ and username reused those rows. Test services, keys and databases were removed.
 Linux CI exercises the Go SSH integrations. Native Linux/Windows OpenSSH and a
 production deployment were not run here; those remain rollout checks. Farm's
 remote Windows race/build coverage is distinct from a native OpenSSH UX check.
+
+The final review also reproduced a guest exit regression in both games: Ctrl+C
+could replace a terminal kick notice with a cancelable discard dialog. Both
+PRs now preserve the kick state and quit immediately; regression tests were
+run failing before the corrections and pass under the race detector afterward.
+The updated tally is **SEVERE 0, MODERATE 5, LIGHT 6** across distinct defects.

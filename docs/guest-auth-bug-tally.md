@@ -1,7 +1,7 @@
 # Guest access implementation bug tally
 
-Count distinct pre-existing defects verified during implementation, not feature gaps
-or bugs introduced and corrected while developing guest access. Severity reflects
+Count distinct application defects verified and fixed during implementation, including
+reviewed guest regressions. Exclude feature gaps and transient development/test setup errors. Severity reflects
 impact in this fleet. No production changes are performed by this work.
 
 | Severity | Defect | Evidence and fix | Repositories |
@@ -18,4 +18,6 @@ impact in this fleet. No production changes are performed by this work.
 | MODERATE | SSH host-key/auth/channel rejection is treated as an unreachable game and poisons shared health. | Separate access errors from TCP/stalled-handshake errors; real SSH regression keeps a healthy pinned-key-mismatch backend online. | Lobby |
 | LIGHT | Unexpected game loss promises progress was saved even after a crash. | Remove the unsupported guarantee and show guest discard copy. | Lobby |
 
-Current total: **SEVERE 0 · MODERATE 5 · LIGHT 5**. Updated after each repository.
+| LIGHT | Ctrl+C replaces a kicked guest's terminal notice with a cancelable discard dialog. | Regression fails before the fix; preserve the terminal kick state and quit immediately. Found in Moon Miner review and verified in Farm too. This was introduced by the new guest confirmation flow. | Farm, Moon Miner |
+
+Current total: **SEVERE 0 · MODERATE 5 · LIGHT 6**. Updated after each repository.

@@ -19,7 +19,12 @@ type authGuard struct {
 }
 
 func newAuthGuard(pending, connections int, timeout time.Duration) *authGuard {
-	return &authGuard{pending: make(map[*guardedConn]struct{}), connections: make(map[*guardedConn]struct{}), maxPending: pending, maxConnections: connections, timeout: timeout, guestConnections: make(map[*guardedConn]string), guestIPs: make(map[string]int), maxGuests: connections, maxGuestsPerIP: connections}
+	return &authGuard{
+		pending: make(map[*guardedConn]struct{}), connections: make(map[*guardedConn]struct{}),
+		maxPending: pending, maxConnections: connections, timeout: timeout,
+		guestConnections: make(map[*guardedConn]string), guestIPs: make(map[string]int),
+		maxGuests: connections, maxGuestsPerIP: connections,
+	}
 }
 func (g *authGuard) wrap(c net.Conn) *guardedConn {
 	g.mu.Lock()
