@@ -19,19 +19,28 @@ p.write_text(json.dumps(state))
 service=os.environ['SERVICE']; key=service.upper()+'_IMAGE'
 def image():
     if state.get('legacy'): return 'legacy:latest'
-    return dict(line.split('=',1) for line in Path('.env').read_text().splitlines() if '=' in line).get(key,'legacy:latest')
-if args[:4]==['compose','ps','--status','running']: print('container')
+    text = Path('.env').read_text() if Path('.env').exists() else ''
+    fallback = os.environ['IMAGE'].split('@')[0]+':latest' if state.get('default_cached') else 'legacy:latest'
+    return dict(line.split('=',1) for line in text.splitlines() if '=' in line).get(key,fallback)
+if args[:4]==['compose','ps','--status','running']:
+    if not state.get('down'): print('container')
+elif args[:3]==['image','inspect','--format']:
+    if state.get('first') or state.get('missing_cache'): sys.exit(1)
+    print('sha256:'+'c'*64)
 elif args[:2]==['inspect','--format']:
     print(state['image'] if args[2]=='{{.Config.Image}}' else 'sha256:'+'c'*64)
 elif args[:3]==['compose','config','--images']: print(image())
 elif args[:3]==['compose','exec','-T']:
     if args[3]=='web': sys.exit(1 if state.get('caddy_fail') and state['version']=='2.4.3' else 0)
-    print('SSH-2.0-'+state['version'])
+    if not state.get('stopped') and not (state.get('rollback_bad') and state['image']!=os.environ['IMAGE']):
+        print('SSH-2.0-'+state['version'])
 elif args[:2]==['compose','up']:
     if args[-1]==service:
         new=image(); state['image']=new
         state['version']='wrong' if state.get('bad') and new==os.environ['IMAGE'] else ('2.4.3' if new==os.environ['IMAGE'] else '1.2.3')
         p.write_text(json.dumps(state))
+elif args[:2]==['compose','stop']:
+    state['stopped']=True; p.write_text(json.dumps(state))
 elif args[:2]==['pull','--quiet']:
     sys.exit(1 if state.get('pull_fail') else 0)
 elif args[0]=='tag': pass
@@ -53,7 +62,8 @@ class DeployTest(unittest.TestCase):
         self.new_image = f'ghcr.io/mynameis-nigel/{repo}@{DIGEST}'
         state = {'image': self.old_image, 'version': '1.2.3', 'calls': [], **flags}
         (path/'state.json').write_text(json.dumps(state))
-        (path/'.env').write_text(f'UNRELATED=keep\nCHESS_IMAGE=pinned-chess\n{service.upper()}_IMAGE={self.old_image}\n')
+        if not flags.get('first') and not flags.get('default_cached'):
+            (path/'.env').write_text(f'UNRELATED=keep\nCHESS_IMAGE=pinned-chess\n{service.upper()}_IMAGE={self.old_image}\n')
         for file in ['docker-compose.yml','games.toml','Caddyfile']: (path/file).write_text('old '+file)
         self.inode = (path/'games.toml').stat().st_ino
         env = {**os.environ, 'PATH': str(binpath)+os.pathsep+os.environ['PATH'],
@@ -82,6 +92,37 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(self.state['image'], self.old_image)
         self.assertIn('FARM_IMAGE='+self.old_image, (self.path/'.env').read_text())
         self.assertIn('Previous build restored', self.result.stdout)
+
+    def test_service_down_restores_configured_image(self):
+        self.assertNotEqual(self.run_deploy(down=True, bad=True).returncode, 0)
+        self.assertEqual(self.state['image'], self.old_image)
+        self.assertIn('FARM_IMAGE='+self.old_image, (self.path/'.env').read_text())
+        self.assertIn('Previous build restored', self.result.stdout)
+
+    def test_down_service_without_cached_image_stops_failed_container(self):
+        self.assertNotEqual(self.run_deploy(down=True, bad=True, missing_cache=True).returncode, 0)
+        self.assertTrue(self.state.get('stopped'))
+        self.assertIn('FARM_IMAGE='+self.old_image, (self.path/'.env').read_text())
+        self.assertNotIn('Previous build restored', self.result.stdout)
+
+    def test_down_service_snapshots_cached_default_before_first_pin(self):
+        self.assertNotEqual(self.run_deploy(down=True, default_cached=True, bad=True).returncode, 0)
+        self.assertTrue(self.state['image'].endswith(':rollback'))
+        self.assertIn('Previous build restored', self.result.stdout)
+        tags = [call for call in self.state['calls'] if call[0] == 'tag']
+        self.assertEqual(len(tags), 1)
+        self.assertEqual(tags[0][1], 'sha256:'+'c'*64)
+
+    def test_first_deployment_failure_stops_new_container(self):
+        self.assertNotEqual(self.run_deploy(down=True, first=True, bad=True).returncode, 0)
+        self.assertTrue(self.state.get('stopped'), self.result.stdout+self.result.stderr)
+        self.assertFalse((self.path/'.env').exists())
+        self.assertNotIn('Previous build restored', self.result.stdout)
+
+    def test_down_service_rollback_requires_healthy_banner(self):
+        self.assertNotEqual(self.run_deploy(down=True, bad=True, rollback_bad=True).returncode, 0)
+        self.assertIn('ROLLBACK FAILED', self.result.stderr)
+        self.assertNotIn('Previous build restored', self.result.stdout)
 
     def test_pull_failure_leaves_running_service_untouched(self):
         self.assertNotEqual(self.run_deploy(pull_fail=True).returncode, 0)

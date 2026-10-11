@@ -39,7 +39,13 @@ banner() {
 wait_version() {
   attempt=0
   while [ "$attempt" -lt "${PROBE_ATTEMPTS:-30}" ]; do
-    if [ "$(banner || true)" = "SSH-2.0-$1" ]; then return 0; fi
+    got=$(banner || true)
+    if [ -n "$1" ]; then
+      if [ "$got" = "SSH-2.0-$1" ]; then return 0; fi
+    else
+      # No old banner was available for a stopped service; prove it is serving.
+      case "$got" in SSH-2.0-?*) return 0 ;; esac
+    fi
     sleep 2
     attempt=$((attempt + 1))
   done
@@ -64,12 +70,13 @@ rollback() {
   done
   if [ "$restarted" = 0 ]; then return 0; fi
   if [ -z "$previous" ]; then
-    echo 'No previous running image is available for rollback.' >&2
+    echo 'No previous local image is available; stopping the failed new container.' >&2
+    docker compose stop "$SERVICE" || return 1
     return 1
   fi
   set_image "$previous" || return 1
   start || return 1
-  if [ -n "$previous_version" ]; then wait_version "$previous_version" || return 1; fi
+  wait_version "$previous_version" || return 1
   echo 'Previous build restored.'
 }
 cleanup() {
@@ -95,6 +102,20 @@ if [ -n "$container" ]; then
   case "$previous" in
     "$IMAGE_REPO"@sha256:*) ;;
     *) previous="$IMAGE_REPO:rollback"; docker tag "$running_image" "$previous" ;;
+  esac
+else
+  # The service may be stopped or absent. Resolve its existing Compose image,
+  # including .env interpolation/defaults, and snapshot it only if cached locally.
+  configured=$(docker compose config --images "$SERVICE")
+  case "$configured" in
+    "$IMAGE_REPO"@sha256:*|"$IMAGE_REPO":*)
+      if cached=$(docker image inspect --format '{{.Id}}' "$configured" 2>/dev/null); then
+        case "$configured" in
+          "$IMAGE_REPO"@sha256:*) previous=$configured ;;
+          *) previous="$IMAGE_REPO:rollback"; docker tag "$cached" "$previous" ;;
+        esac
+      fi
+      ;;
   esac
 fi
 # Pull before touching the running configuration.

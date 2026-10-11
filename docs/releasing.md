@@ -63,5 +63,6 @@ and the normal private configuration already installed.
 Run `go build ./...`, `go vet ./...`, `go test -race ./...`, and
 `python3 scripts/deploy/test_deploy.py`. The deployment tests use a Docker
 substitute to cover digest selection, unrelated-service preservation, startup
-failure/rollback, pull failure, old Compose rejection, and router config recovery.
+failure/rollback (including stopped services and first deployments), pull failure,
+old Compose rejection, and router config recovery.
 They do not deploy to AWS. Validate workflows with actionlint.
