@@ -1,5 +1,11 @@
 # Arcade 04 — Deployment & CI/CD
 
+> Release workflow update: production now deploys published `vMAJOR.MINOR.PATCH`
+> releases, with build-injected versions and persistent digest selection.
+> See the repository `docs/releasing.md` for the current procedure. Older
+> push-to-main and local-latest deployment descriptions below are historical.
+
+
 **Phase:** 3 · **Depends on:** 01–03 buildable · **This repo owns the
 arcade-wide compose file and the deploy conventions every game repo
 follows.**

@@ -33,7 +33,7 @@
 # file and games.toml, never the router binary — that goal is unchanged.
 services:
   router:
-    image: ghcr.io/mynameis-nigel/ssh-arcadelobby:latest
+    image: ${ROUTER_IMAGE:-ghcr.io/mynameis-nigel/ssh-arcadelobby:latest}
     ports:
       - "22:2222" # host 22 -> container 2222 (non-root bind)
     environment:
@@ -104,7 +104,7 @@ services:
     cpus: 1.0
 
   farm:
-    image: ghcr.io/mynameis-nigel/ssh-farm:latest
+    image: ${FARM_IMAGE:-ghcr.io/mynameis-nigel/ssh-farm:latest}
     # NO ports: — private network only; the router is the only way in.
     environment:
       FARM_ALLOW_GUESTS: "false"
@@ -170,7 +170,7 @@ services:
     cpus: 1.0
 
   moonminer:
-    image: ghcr.io/mynameis-nigel/ssh-moonminer:latest
+    image: ${MOONMINER_IMAGE:-ghcr.io/mynameis-nigel/ssh-moonminer:latest}
     environment:
       MOONMINER_ALLOW_GUESTS: "false"
       MOONMINER_LISTEN_PORT: "2222"
@@ -209,7 +209,7 @@ services:
     cpus: 1.0
 
   chess:
-    image: ghcr.io/mynameis-nigel/ssh-chess:latest
+    image: ${CHESS_IMAGE:-ghcr.io/mynameis-nigel/ssh-chess:latest}
     # NO ports: — private network only; the router is the only way in.
     environment:
       CHESS_LISTEN_PORT: "2222"

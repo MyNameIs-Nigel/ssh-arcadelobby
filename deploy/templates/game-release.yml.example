@@ -1,58 +1,154 @@
-# Per-game release workflow template (docs/04-deployment-and-cicd.md).
-# Copy to <game-repo>/.github/workflows/release.yml and replace every
-# <GAME> / <game> placeholder: image name, compose service name, and the
-# go-version-file path if it differs. ci.yml is identical across every
-# repo (vet + build + go test -race ./...) — copy this repo's verbatim.
-#
-# Same shape as this repo's own release.yml: test (never skipped) →
-# publish (needs: test) → stop. There is deliberately NO deploy job, here
-# or in any game repo. It used to run on a self-hosted runner installed on
-# the production host, which cannot survive the repos going public: for
-# `pull_request` events GitHub reads the workflow file from the PR head, so
-# a fork PR can retarget `runs-on:` at the `self-hosted` label and execute
-# on the box. All four runners were deregistered on 2026-09-04 — do not add
-# one back for a new game.
-#
-# A new game is therefore shipped by hand until the OIDC + SSM deploy path
-# lands: deploy/README.md, "Deploying by hand".
+# Copy this workflow and scripts/deploy/{remote-deploy.sh,test_deploy.py} to a new game.
+# Replace ssh-moonminer and SERVICE=moonminer; see docs/releasing.md.
 name: Release
 
 on:
-  push:
-    branches: [main]
+  release:
+    types: [published]
+
+# Never interrupt an active SSM deployment. A host lock also serializes repos.
+concurrency:
+  group: release-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
+  release:
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - id: release
+        name: Validate release tag and main ancestry
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release tag must be vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$(git rev-parse HEAD)"
+          echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - run: python3 scripts/deploy/test_deploy.py
       - run: go vet ./...
       - run: go build ./...
       - run: go test -race ./...
+      - name: Verify build-injected version
+        run: go test -tags releasecheck -ldflags="-X github.com/mynameis-nigel/ssh-moonminer/internal/version.Version=2.4.3" ./internal/version ./internal/server ./internal/tui
 
   publish:
-    needs: test
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    needs: [release, test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+        with:
+          ref: ${{ github.sha }}
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
         run: echo "sha_short=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
+          labels: |
+            org.opencontainers.image.version=v${{ needs.release.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            VERSION=${{ needs.release.outputs.version }}
           push: true
           tags: |
-            ghcr.io/mynameis-nigel/<repo>:latest
-            ghcr.io/mynameis-nigel/<repo>:${{ steps.meta.outputs.sha_short }}
+            ghcr.io/mynameis-nigel/ssh-moonminer:v${{ needs.release.outputs.version }}
+            ghcr.io/mynameis-nigel/ssh-moonminer:latest
+            ghcr.io/mynameis-nigel/ssh-moonminer:${{ steps.meta.outputs.sha_short }}
+
+  deploy:
+    needs: [release, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ vars.ARCADE_DEPLOY_ROLE }}
+          aws-region: us-east-1
+      - name: Deploy release through SSM
+        env:
+          INSTANCE_ID: ${{ vars.ARCADE_INSTANCE_ID }}
+          IMAGE: ghcr.io/mynameis-nigel/ssh-moonminer@${{ needs.publish.outputs.digest }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg script "$(base64 -w0 scripts/deploy/remote-deploy.sh)" \
+            --arg image "$IMAGE" --arg version "$VERSION" \
+            '{executionTimeout: ["1500"], commands: [
+              "set -eu",
+              "script=$(mktemp)",
+              "trap \"rm -f $script\" EXIT",
+              "printf %s \($script) | base64 -d > \"$script\"",
+              "SERVICE=moonminer IMAGE=\($image) VERSION=\($version) sh \"$script\""
+            ]}' > params.json
+          command_id=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --timeout-seconds 1800 \
+            --comment "deploy moonminer $VERSION" \
+            --parameters file://params.json \
+            --query Command.CommandId --output text)
+          # The standard waiter stops too early for a queued host deployment.
+          for attempt in $(seq 1 170); do
+            status=$(aws ssm get-command-invocation --command-id "$command_id" \
+              --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || true)
+            case "$status" in
+              Success|Cancelled|TimedOut|Failed|Cancelling) break ;;
+            esac
+            sleep 10
+          done
+          aws ssm get-command-invocation --command-id "$command_id" \
+            --instance-id "$INSTANCE_ID" \
+            --query '{Status:Status,Out:StandardOutputContent,Err:StandardErrorContent}' \
+            --output json | tee result.json
+          {
+            echo "Release: v$VERSION"
+            echo "Image: $IMAGE"
+            echo "SSM command: $command_id"
+            echo "Status: $(jq -r .Status result.json)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$(jq -r .Status result.json)" = Success

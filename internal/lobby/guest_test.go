@@ -12,7 +12,7 @@ func TestGuestPolicyAllInputPaths(t *testing.T) {
 	for _, input := range []string{"enter", "space", "click", "double-click"} {
 		t.Run(input, func(t *testing.T) {
 			src := twoGames()
-			src.games[0].Version = "1.0.0"
+			src.games[0].AlphaWarning = true
 			f := newFixture(t, src, WithGuest())
 			_ = f.model.View()
 			var cmd tea.Cmd
@@ -37,7 +37,7 @@ func TestAlphaRevalidatesCurrentRegistryBeforeAcknowledging(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			src := twoGames()
 			src.games[0].AllowGuests = true
-			src.games[0].Version = "1.0.0"
+			src.games[0].AlphaWarning = true
 			prefs := &fakePrefs{}
 			f := newFixture(t, src, WithGuest())
 			f.model.prefs = prefs
@@ -92,7 +92,7 @@ func TestGuestChromeFitsAndKeepsPolicyVisible(t *testing.T) {
 
 func TestKeyedAlphaUsesCurrentPolicyToo(t *testing.T) {
 	src := twoGames()
-	src.games[0].Version = "1.0.0"
+	src.games[0].AlphaWarning = true
 	f := newFixture(t, src)
 	f.press(t, "enter")
 	src.games = nil

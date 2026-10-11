@@ -91,6 +91,7 @@ name = "VERSIONED"
 addr = "v:22"
 order = 10
 version = "2.1.3"
+alpha_warning = true
 
 [[games]]
 id = "unversioned"
@@ -99,6 +100,9 @@ addr = "u:22"
 order = 20
 `, Options{})
 	games := r.Games()
+	if !games[0].AlphaWarning || games[1].AlphaWarning {
+		t.Fatal("alpha_warning not loaded or defaulted incorrectly")
+	}
 	if games[0].Version != "2.1.3" {
 		t.Fatalf("version not loaded: %+v", games[0])
 	}
@@ -107,20 +111,16 @@ order = 20
 	}
 }
 
-func TestChannel(t *testing.T) {
-	cases := []struct{ version, want string }{
-		{"1.0.0", "alpha"},
-		{"1.4.2", "alpha"},
-		{"2.0.0", "beta"},
-		{"2.10.1", "beta"},
-		{"3.0.0", ""}, // no channel defined yet past beta
-		{"", ""},
-		{"10.0.0", ""}, // channel is the whole leading number, not its first digit
+func TestAlphaWarningIsExplicit(t *testing.T) {
+	games, err := validate([]fileGame{
+		{ID: "flagged", Name: "Flagged", Addr: "flagged:22", Version: "2.4.3", AlphaWarning: true},
+		{ID: "plain", Name: "Plain", Addr: "plain:22", Version: "1.0.0"},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, tc := range cases {
-		if got := Channel(tc.version); got != tc.want {
-			t.Errorf("Channel(%q) = %q, want %q", tc.version, got, tc.want)
-		}
+	if !games[0].AlphaWarning || games[1].AlphaWarning {
+		t.Fatalf("warnings = %+v", games)
 	}
 }
 
