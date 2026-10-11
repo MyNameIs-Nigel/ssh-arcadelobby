@@ -18,22 +18,22 @@ import (
 	"github.com/charmbracelet/ssh"
 	gossh "golang.org/x/crypto/ssh"
 
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/identity"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/proxyproto"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
 )
 
-// ErrDialFailed wraps every failure to reach the game or establish the
-// upstream session — the "game is offline" class. The handler flashes
-// offline and reports the game to the prober.
+// ErrDialFailed means TCP failure or a stalled SSH handshake. Only these
+// failures justify reporting a game offline; access/policy errors do not.
 var ErrDialFailed = errors.New("game unreachable")
+var ErrAccessRejected = errors.New("game access rejected")
 
-// ErrConnectionLost wraps a session that ended without a clean exit status
-// (deploy or crash mid-game). Games flush saves on disconnect, so the
-// player-facing notice can honestly say progress was saved.
+// ErrConnectionLost does not promise a successful final save after a crash.
 var ErrConnectionLost = errors.New("connection to game lost")
 
-// Options tunes Run. The zero value works for standalone use.
+// Options tunes Run. Identity must be explicitly resolved and validated.
 type Options struct {
+	Identity identity.Identity
 	// Input is the player's keystroke stream. When nil, the session itself
 	// is read directly — only safe if nothing else will ever read the
 	// session afterwards. The router's handler passes a pump-fed pipe so
@@ -64,12 +64,20 @@ func Run(sess ssh.Session, game registry.Game, proxyKey gossh.Signer, opts Optio
 		dialTimeout = 5 * time.Second
 	}
 
-	playerKey := sess.PublicKey()
-	if playerKey == nil {
-		return fmt.Errorf("bridge: session has no public key")
+	id := opts.Identity
+	if err := id.Validate(); err != nil {
+		return fmt.Errorf("bridge: %w: %w", ErrAccessRejected, err)
 	}
-	fp := proxyproto.FingerprintBytes(playerKey)
-	user := proxyproto.Encode(fp, sess.User())
+	playerKey := id.PublicKey
+	var user string
+	if id.Kind == identity.Guest {
+		if !game.AllowGuests {
+			return fmt.Errorf("bridge: %w: %w", ErrAccessRejected, registry.ErrKeyRequired)
+		}
+		user = "guest." + identity.NewToken() // fresh for each visit, never a resumable account
+	} else {
+		user = proxyproto.Encode(proxyproto.FingerprintBytes(playerKey), id.Slot)
+	}
 
 	hostKeyCallback := gossh.InsecureIgnoreHostKey() //nolint:gosec // isolated private network; pin via registry in production
 	if game.HostKey != nil {
@@ -83,26 +91,27 @@ func Run(sess ssh.Session, game registry.Game, proxyKey gossh.Signer, opts Optio
 	}
 
 	start := time.Now()
-	displayFP := proxyproto.Fingerprint(playerKey)
-	logger = logger.With("game", game.ID, "fingerprint", truncate(displayFP, 16))
+	logger = logger.With("game", game.ID, "identity", truncate(id.PresenceKey(), 20))
 
 	client, err := dialWithTimeout(game.Addr, clientCfg, dialTimeout)
 	if err != nil {
-		return fmt.Errorf("bridge: dial %s: %w: %w", game.Addr, ErrDialFailed, err)
+		return fmt.Errorf("bridge: dial %s: %w", game.Addr, err)
 	}
 	defer client.Close()
 
 	up, err := client.NewSession()
 	if err != nil {
-		return fmt.Errorf("bridge: open session on %s: %w: %w", game.Addr, ErrDialFailed, err)
+		return fmt.Errorf("bridge: open session on %s: %w: %w", game.Addr, ErrAccessRejected, err)
 	}
 	defer up.Close()
 
 	// Identity env (optional, auditing): the player's public key in
 	// authorized_keys format. Games may ignore or reject it.
-	authKey := strings.TrimSpace(string(gossh.MarshalAuthorizedKey(playerKey)))
-	if err := up.Setenv(proxyproto.EnvPlayerKey, authKey); err != nil {
-		logger.Debug("game rejected env request", "error", err)
+	if id.Kind == identity.Keyed {
+		authKey := strings.TrimSpace(string(gossh.MarshalAuthorizedKey(playerKey)))
+		if err := up.Setenv(proxyproto.EnvPlayerKey, authKey); err != nil {
+			logger.Debug("game rejected env request", "error", err)
+		}
 	}
 
 	pty, sessWinch, _ := sess.Pty()
@@ -114,14 +123,14 @@ func Run(sess ssh.Session, game registry.Game, proxyKey gossh.Signer, opts Optio
 	// the player's keystroke stream, which only unblocks on the next key.
 	stdin, err := up.StdinPipe()
 	if err != nil {
-		return fmt.Errorf("bridge: stdin pipe: %w: %w", ErrDialFailed, err)
+		return fmt.Errorf("bridge: stdin pipe: %w: %w", ErrAccessRejected, err)
 	}
 
 	if err := up.RequestPty(pty.Term, pty.Window.Height, pty.Window.Width, gossh.TerminalModes{}); err != nil {
-		return fmt.Errorf("bridge: pty request: %w: %w", ErrDialFailed, err)
+		return fmt.Errorf("bridge: pty request: %w: %w", ErrAccessRejected, err)
 	}
 	if err := up.Shell(); err != nil {
-		return fmt.Errorf("bridge: shell: %w: %w", ErrDialFailed, err)
+		return fmt.Errorf("bridge: shell: %w: %w", ErrAccessRejected, err)
 	}
 
 	// Send the current size once immediately after Shell in case it changed
@@ -175,7 +184,7 @@ func Run(sess ssh.Session, game registry.Game, proxyKey gossh.Signer, opts Optio
 		}
 	}()
 
-	logger.Info("bridge connected", "user_slot", strings.SplitN(user, ".", 2)[1])
+	logger.Info("bridge connected", "slot", id.Slot)
 	waitErr := up.Wait()
 	duration := time.Since(start).Round(time.Millisecond)
 
@@ -198,20 +207,24 @@ func Run(sess ssh.Session, game registry.Game, proxyKey gossh.Signer, opts Optio
 func dialWithTimeout(addr string, cfg *gossh.ClientConfig, timeout time.Duration) (*gossh.Client, error) {
 	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrDialFailed, err)
 	}
 	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
 		_ = conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrDialFailed, err)
 	}
 	c, chans, reqs, err := gossh.NewClientConn(conn, addr, cfg)
 	if err != nil {
 		_ = conn.Close()
-		return nil, err
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return nil, fmt.Errorf("%w: %w", ErrDialFailed, err)
+		}
+		return nil, fmt.Errorf("%w: %w", ErrAccessRejected, err)
 	}
 	if err := conn.SetDeadline(time.Time{}); err != nil {
 		_ = conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrAccessRejected, err)
 	}
 	return gossh.NewClient(c, chans, reqs), nil
 }

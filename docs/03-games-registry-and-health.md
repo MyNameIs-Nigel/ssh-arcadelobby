@@ -177,3 +177,15 @@ type GameStatus struct {
 - The production `games.toml` content and its mount → 04.
 - Player counts / rich presence per game — post-MVP (would need a status
   side-channel per game; note as TODO in code, don't build).
+
+## Guest policy
+
+`allow_guests` is a boolean on each `[[games]]` entry and defaults to false.
+Production, local and fallback registries allow Farm/Moon Miner and deny Chess.
+Guest rows show `GUEST OK` or `KEY REQUIRED` before descriptors, so truncation
+cannot hide policy. Policy is checked on keyboard and mouse activation, again
+when an alpha dialog continues, and immediately before dialing the bridge.
+Each check looks up the current game by ID, using its current address and health;
+removed, offline or newly key-only entries cannot launch from a stale modal.
+Guest alpha acknowledgements last only for the outer lobby shell and never
+create a preference record. Keyed preferences keep their existing persistence.

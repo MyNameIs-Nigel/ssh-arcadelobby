@@ -67,6 +67,7 @@ type Model struct {
 	bannerSrc   BannerReader
 	poke        <-chan struct{}
 	bannerPoke  <-chan struct{}
+	guest       bool
 	fingerprint string
 	prefs       AlphaPrefs
 
@@ -98,6 +99,9 @@ type Model struct {
 
 // Option customizes New.
 type Option func(*Model)
+
+// WithGuest enables ephemeral guest chrome and fail-closed game policy.
+func WithGuest() Option { return func(m *Model) { m.guest = true } }
 
 // WithFlash shows a notice when the menu opens (offline game, lost bridge).
 func WithFlash(text string) Option {
@@ -328,9 +332,9 @@ func (m Model) activate() (tea.Model, tea.Cmd) {
 	if m.cursor < 0 || m.cursor >= len(m.games) {
 		return m, nil
 	}
-	g := m.games[m.cursor]
-	if !g.Online {
-		m.setFlash("GAME OFFLINE — TRY LATER")
+	g, err := registry.Playable(m.src.Games(), m.games[m.cursor].ID, m.guest)
+	if err != nil {
+		m.setFlash(err.Error())
 		return m, nil
 	}
 	if m.needsAlphaWarning(g) {
@@ -357,7 +361,12 @@ func (m Model) needsAlphaWarning(g registry.GameStatus) bool {
 }
 
 func (m Model) confirmAlpha() (tea.Model, tea.Cmd) {
-	g := m.alphaGame
+	g, err := registry.Playable(m.src.Games(), m.alphaGame.ID, m.guest)
+	m.alphaOpen = false
+	if err != nil {
+		m.setFlash(err.Error())
+		return m, nil
+	}
 	if m.alphaDontShow && m.prefs != nil {
 		_ = m.prefs.AckAlpha(g.ID)
 	}
@@ -366,7 +375,12 @@ func (m Model) confirmAlpha() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) launchGame(g registry.Game) (tea.Model, tea.Cmd) {
-	m.result = Result{Kind: KindPlay, Game: g}
+	current, err := registry.Playable(m.src.Games(), g.ID, m.guest)
+	if err != nil {
+		m.setFlash(err.Error())
+		return m, nil
+	}
+	m.result = Result{Kind: KindPlay, Game: current.Game}
 	return m, tea.Quit
 }
 

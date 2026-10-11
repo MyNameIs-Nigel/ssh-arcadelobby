@@ -87,3 +87,42 @@ MIT — see [`LICENSE`](LICENSE).
 published container image (currently Litestream, Apache-2.0). Update it if the
 image ever gains another bundled binary — Apache-2.0 requires that attribution
 to travel with the artifact, not merely with the source.
+
+## Guest access
+
+Guest play is opt-in. Normal SSH key login keeps the same accounts and saves.
+With `ARCADE_ALLOW_GUESTS=true`, a client without a usable key can type `guest`
+at the keyboard-interactive prompt. The menu displays **Guest Account**, warns
+that progress resets when leaving a game, and shows `ssh-keygen -t ed25519` to
+run in a local terminal. Reconnecting with a key starts saving future progress;
+existing guest progress is never converted or recovered.
+
+Only registry entries with `allow_guests=true` can launch for guests. Farm and
+Moon Miner use memory-only visits; Chess remains key-only. Both game backends
+also require their guest flags and the existing trusted proxy key. Deploy the
+backends first, verify keyed saves, then enable backend flags and the lobby last.
+The committed Compose file leaves all guest flags **false**. No migration,
+production configuration change, merge or deployment is part of this PR.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `ARCADE_ALLOW_GUESTS` | `false` | Keyboard-interactive guest admission. |
+| `ARCADE_MAX_GUEST_SESSIONS` | `32` | Guest shell and authenticated transport budgets; must be below the global session cap when enabled. |
+| `ARCADE_MAX_GUEST_SESSIONS_PER_IP` | `4` | Concurrent guest shells and transports per public client IP. Shared NATs share this budget. |
+| `ARCADE_MAX_PENDING_AUTH` | `64` | Pending handshakes, independent of authenticated shell caps. |
+| `ARCADE_AUTH_TIMEOUT` | `60s` | Pre-authentication deadline; cleared after successful authentication. |
+
+Total transports are bounded by `ARCADE_MAX_CONNECTIONS + ARCADE_MAX_PENDING_AUTH`.
+The existing global, per-key and rate limits still apply. These initial guest
+budgets are configurable rollout values, not measured capacity guarantees.
+
+Local fleet: `./scripts/dev-local-fleet.sh --guests` builds all four siblings,
+uses loopback listeners and isolated development databases, and enables guest
+flags. Without `--guests`, admission stays key-only. A forced guest client is:
+
+```sh
+ssh -p 2222 -o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-interactive guest@127.0.0.1
+```
+
+See [the approved architecture](docs/08-guest-access-plan.md) and
+[protocol v2](docs/02-bridge-and-identity-protocol.md).

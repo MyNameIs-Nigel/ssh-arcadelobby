@@ -21,6 +21,8 @@ var (
 	styleFlash         = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true)
 	styleKeybar        = lipgloss.NewStyle().Foreground(lipgloss.Color("31"))
 	styleBlink         = lipgloss.NewStyle().Foreground(lipgloss.Color("45"))
+	styleGuest         = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
+	styleGuestCommand  = lipgloss.NewStyle().Foreground(lipgloss.Color("45"))
 	styleFinger        = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	styleAboutH        = lipgloss.NewStyle().Foreground(lipgloss.Color("45")).Bold(true)
 	styleAbout         = lipgloss.NewStyle().Foreground(lipgloss.Color("250"))

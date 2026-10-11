@@ -21,6 +21,7 @@ import (
 	"github.com/charmbracelet/ssh"
 	gossh "golang.org/x/crypto/ssh"
 
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/identity"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/proxyproto"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/testutil"
@@ -61,6 +62,7 @@ func startPlayerServer(t *testing.T, game registry.Game, proxyKey gossh.Signer) 
 			func(ssh.Handler) ssh.Handler {
 				return func(s ssh.Session) {
 					err := Run(s, game, proxyKey, Options{
+						Identity:    identity.NewKeyed(s.PublicKey(), s.User()),
 						Logger:      quietLogger(),
 						DialTimeout: 2 * time.Second,
 					})
@@ -310,8 +312,8 @@ func TestBridgeHostKeyPinning(t *testing.T) {
 		_ = dialPlayer(t, addr, "scout", testSigner(t))
 
 		err := waitErr(t, errCh)
-		if !errors.Is(err, ErrDialFailed) {
-			t.Fatalf("bridge returned %v, want ErrDialFailed", err)
+		if !errors.Is(err, ErrAccessRejected) {
+			t.Fatalf("bridge returned %v, want ErrAccessRejected", err)
 		}
 		if len(fake.Sessions()) != 0 {
 			t.Fatal("bridge reached the game despite a host key mismatch")

@@ -18,7 +18,7 @@ import (
 )
 
 // Version is the protocol version this package implements.
-const Version = 1
+const Version = 2
 
 // EnvPlayerKey is the env request sent after the session channel opens: the
 // player's public key in authorized_keys format. Games may store it; they

@@ -2,82 +2,94 @@ package server
 
 import (
 	"fmt"
-	"io"
-	"sync"
-
 	"github.com/charmbracelet/ssh"
-
-	"github.com/mynameis-nigel/ssh-arcadelobby/internal/proxyproto"
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/identity"
+	"io"
+	"net"
+	"sync"
 )
 
-// SessionLimits tracks global and per-key concurrent sessions.
+// SessionLimits reserves part of the global budget for keyed players and
+// limits guests by their public client IP, never by the proxy or username.
 type SessionLimits struct {
-	mu        sync.Mutex
-	global    int
-	perKey    map[string]int
-	maxGlobal int
-	maxPerKey int
+	mu                                        sync.Mutex
+	global, guests                            int
+	perKey, perIP                             map[string]int
+	maxGlobal, maxPerKey, maxGuests, maxPerIP int
 }
 
-// NewSessionLimits creates a limiter with the given caps.
-func NewSessionLimits(maxGlobal, maxPerKey int) *SessionLimits {
-	return &SessionLimits{
-		perKey:    make(map[string]int),
-		maxGlobal: maxGlobal,
-		maxPerKey: maxPerKey,
-	}
+func NewSessionLimits(global, perKey, guests, perIP int) *SessionLimits {
+	return &SessionLimits{perKey: make(map[string]int), perIP: make(map[string]int), maxGlobal: global, maxPerKey: perKey, maxGuests: guests, maxPerIP: perIP}
 }
-
-// Middleware rejects connections when caps are exceeded.
 func (l *SessionLimits) Middleware() func(ssh.Handler) ssh.Handler {
 	return func(next ssh.Handler) ssh.Handler {
 		return func(s ssh.Session) {
-			key := s.PublicKey()
-			if key == nil {
-				_, _ = io.WriteString(s, "Public key authentication is required.\r\n")
-				s.Exit(1)
+			id := sessionIdentity(s)
+			ip := clientIP(s.RemoteAddr())
+			if !l.acquire(id, ip) {
+				_, _ = io.WriteString(s, fmt.Sprintf("Too many active sessions (global max %d, per-key max %d; guest max %d, per-IP max %d). Try again later.\r\n", l.maxGlobal, l.maxPerKey, l.maxGuests, l.maxPerIP))
+				_ = s.Exit(1)
 				return
 			}
-			fp := proxyproto.Fingerprint(key)
-			if !l.acquire(fp) {
-				_, _ = io.WriteString(s, fmt.Sprintf(
-					"Too many active sessions (global max %d, per-key max %d). Try again later.\r\n",
-					l.maxGlobal, l.maxPerKey,
-				))
-				s.Exit(1)
-				return
-			}
-			defer l.release(fp)
+			defer l.release(id, ip)
 			next(s)
 		}
 	}
 }
-
-func (l *SessionLimits) acquire(fingerprint string) bool {
+func clientIP(addr net.Addr) string {
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return addr.String()
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String()
+	}
+	return host
+}
+func (l *SessionLimits) acquire(id identity.Identity, ip string) bool {
+	if id.Validate() != nil {
+		return false
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-
 	if l.global >= l.maxGlobal {
 		return false
 	}
-	if l.perKey[fingerprint] >= l.maxPerKey {
-		return false
+	if id.Kind == identity.Guest {
+		if l.guests >= l.maxGuests || l.perIP[ip] >= l.maxPerIP {
+			return false
+		}
+		l.guests++
+		l.perIP[ip]++
+	} else {
+		if l.perKey[id.Fingerprint] >= l.maxPerKey {
+			return false
+		}
+		l.perKey[id.Fingerprint]++
 	}
-
 	l.global++
-	l.perKey[fingerprint]++
 	return true
 }
-
-func (l *SessionLimits) release(fingerprint string) {
+func (l *SessionLimits) release(id identity.Identity, ip string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-
-	l.global--
-	if l.perKey[fingerprint] > 0 {
-		l.perKey[fingerprint]--
-		if l.perKey[fingerprint] == 0 {
-			delete(l.perKey, fingerprint)
+	if id.Kind == identity.Guest {
+		if l.perIP[ip] <= 0 {
+			return
+		}
+		l.guests--
+		l.perIP[ip]--
+		if l.perIP[ip] == 0 {
+			delete(l.perIP, ip)
+		}
+	} else {
+		if l.perKey[id.Fingerprint] <= 0 {
+			return
+		}
+		l.perKey[id.Fingerprint]--
+		if l.perKey[id.Fingerprint] == 0 {
+			delete(l.perKey, id.Fingerprint)
 		}
 	}
+	l.global--
 }

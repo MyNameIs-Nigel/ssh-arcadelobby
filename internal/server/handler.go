@@ -12,8 +12,9 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/bridge"
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/identity"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/lobby"
-	"github.com/mynameis-nigel/ssh-arcadelobby/internal/proxyproto"
+	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
 )
 
 // terminalReset is written between a game exiting and the lobby restarting.
@@ -33,13 +34,18 @@ const (
 // bubbletea middleware) because the stock middleware owns the session for
 // its whole life.
 func (srv *Server) handle(s ssh.Session) {
-	fp := proxyproto.Fingerprint(s.PublicKey())
+	id := sessionIdentity(s)
+	fp := id.Fingerprint
+	var prefs lobby.AlphaPrefs = memoryPrefs{}
+	if id.Kind == identity.Keyed {
+		prefs = sessionPrefs{store: srv.store, fingerprint: fp, now: func() int64 { return time.Now().Unix() }}
+	}
 	logger := srv.logger.With(
-		"fingerprint", truncate(fp, 16),
+		"identity", truncate(id.PresenceKey(), 20),
 		"remote", s.RemoteAddr().String(),
 	)
 
-	if srv.store != nil {
+	if id.Kind == identity.Keyed && srv.store != nil {
 		pubKey := string(gossh.MarshalAuthorizedKey(s.PublicKey()))
 		if err := srv.store.TouchAccount(s.Context(), fp, pubKey, time.Now().Unix()); err != nil {
 			logger.Warn("touch account failed", "error", err)
@@ -48,7 +54,7 @@ func (srv *Server) handle(s ssh.Session) {
 
 	// Counted from here: past the caps and PTY checks, so a rejected
 	// connection is never a player.
-	seat := srv.presence.Join(fp)
+	seat := srv.presence.Join(id.PresenceKey())
 	defer seat.Leave()
 
 	pump := newInputPump(s)
@@ -63,12 +69,16 @@ func (srv *Server) handle(s ssh.Session) {
 
 	var flash string
 	for {
-		res := srv.runLobby(s, pump, wp, fp, flash)
+		res := srv.runLobby(s, pump, wp, id, prefs, flash)
 		flash = ""
 
 		switch res.Kind {
 		case lobby.KindQuit:
-			_, _ = io.WriteString(s, goodbyeMessage)
+			if id.Kind == identity.Guest {
+				_, _ = io.WriteString(s, "\r\nThanks for playing — guest progress was not saved.\r\n")
+			} else {
+				_, _ = io.WriteString(s, goodbyeMessage)
+			}
 			return
 		case lobby.KindIdle:
 			_, _ = io.WriteString(s, idleMessage)
@@ -79,7 +89,12 @@ func (srv *Server) handle(s ssh.Session) {
 		case lobby.KindPlay:
 		}
 
-		game := res.Game
+		current, accessErr := registry.Playable(srv.registry.Games(), res.Game.ID, id.Kind == identity.Guest)
+		if accessErr != nil {
+			flash = accessErr.Error()
+			continue
+		}
+		game := current.Game
 		bridgeStart := time.Now()
 
 		// The bridge reads player input from a pump-fed pipe (see pump.go)
@@ -88,9 +103,10 @@ func (srv *Server) handle(s ssh.Session) {
 		pump.SetDest(pw)
 		seat.Enter(game.ID)
 		err := bridge.Run(s, game, srv.proxyKey, bridge.Options{
-			Input:  pr,
-			Winch:  wp.Attach(),
-			Logger: srv.logger,
+			Identity: id,
+			Input:    pr,
+			Winch:    wp.Attach(),
+			Logger:   srv.logger,
 		})
 		seat.Lobby()
 		wp.Detach()
@@ -116,8 +132,13 @@ func (srv *Server) handle(s ssh.Session) {
 			flash = strings.ToUpper(game.Name) + " IS OFFLINE — TRY LATER"
 		case errors.As(err, &exitErr):
 			flash = strings.ToUpper(game.Name) + " CLOSED THE SESSION"
+		case errors.Is(err, bridge.ErrAccessRejected):
+			flash = "GAME ACCESS REFUSED — TRY AGAIN LATER"
 		default:
-			flash = "CONNECTION TO " + strings.ToUpper(game.Name) + " LOST — PROGRESS SAVED"
+			flash = "CONNECTION TO " + strings.ToUpper(game.Name) + " LOST"
+			if id.Kind == identity.Guest {
+				flash = "GAME ENDED — GUEST PROGRESS WAS NOT SAVED"
+			}
 		}
 
 		select {
@@ -134,7 +155,7 @@ func (srv *Server) handle(s ssh.Session) {
 // ended. Mirrors what wish's bubbletea middleware does internally
 // (bubbletea.MakeOptions), plus the Windows-host PTY fixes, with input
 // coming from the pump instead of the raw session.
-func (srv *Server) runLobby(s ssh.Session, pump *inputPump, wp *winchPump, fp, flash string) lobby.Result {
+func (srv *Server) runLobby(s ssh.Session, pump *inputPump, wp *winchPump, id identity.Identity, prefs lobby.AlphaPrefs, flash string) lobby.Result {
 	pty, _, _ := s.Pty()
 
 	pr, pw := io.Pipe()
@@ -160,12 +181,10 @@ func (srv *Server) runLobby(s ssh.Session, pump *inputPump, wp *winchPump, fp, f
 	if flash != "" {
 		opts = append(opts, lobby.WithFlash(flash))
 	}
-	prefs := sessionPrefs{
-		store:       srv.store,
-		fingerprint: fp,
-		now:         func() int64 { return time.Now().Unix() },
+	if id.Kind == identity.Guest {
+		opts = append(opts, lobby.WithGuest())
 	}
-	model := lobby.New(srv.registry, srv.banner, poke, bannerPoke, fp, prefs,
+	model := lobby.New(srv.registry, srv.banner, poke, bannerPoke, id.Fingerprint, prefs,
 		pty.Window.Width, pty.Window.Height, srv.cfg.LobbyIdleTimeout, opts...)
 
 	envs := append(s.Environ(), "TERM="+pty.Term)
