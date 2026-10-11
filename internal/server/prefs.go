@@ -2,12 +2,20 @@ package server
 
 import (
 	"context"
-
-	"github.com/mynameis-nigel/ssh-arcadelobby/internal/store"
 )
 
+type accountStore interface {
+	TouchAccount(context.Context, string, string, int64) error
+	HasAlphaAck(context.Context, string, string) (bool, error)
+	AckAlphaWarning(context.Context, string, string, int64) error
+}
+type memoryPrefs map[string]bool
+
+func (p memoryPrefs) HasAlphaAck(gameID string) bool { return p[gameID] }
+func (p memoryPrefs) AckAlpha(gameID string) error   { p[gameID] = true; return nil }
+
 type sessionPrefs struct {
-	store       *store.Store
+	store       accountStore
 	fingerprint string
 	now         func() int64
 }

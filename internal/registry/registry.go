@@ -23,6 +23,7 @@ import (
 // Game is one games.toml entry. Snapshots handed out by the registry are
 // immutable copies — mutating one never affects the registry.
 type Game struct {
+	AllowGuests bool
 	ID          string
 	Name        string
 	Tagline     string
@@ -319,6 +320,7 @@ func (r *Registry) notify() {
 }
 
 type fileGame struct {
+	AllowGuests bool     `toml:"allow_guests"`
 	ID          string   `toml:"id"`
 	Name        string   `toml:"name"`
 	Tagline     string   `toml:"tagline"`
@@ -395,6 +397,7 @@ func validate(entries []fileGame) ([]Game, error) {
 			return nil, fmt.Errorf("games[%d] (%s): version %q must match <channel>.<major>.<minor> (e.g. 1.0.0 alpha, 2.0.0 beta)", i, e.ID, e.Version)
 		}
 		g := Game{
+			AllowGuests: e.AllowGuests,
 			ID:          e.ID,
 			Name:        e.Name,
 			Tagline:     e.Tagline,

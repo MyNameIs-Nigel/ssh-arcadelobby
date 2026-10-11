@@ -1,10 +1,10 @@
-# Arcade 02 — The Bridge & Identity-Forwarding Protocol (v1)
+# Arcade 02 — The Bridge & Identity-Forwarding Protocol (v2)
 
 **Phase:** 2 · **Depends on:** 01 (session loop), 03 (registry types) ·
 **This document is the canonical contract.** Game repos implement the
 "game side" section and cite this file by path
 (`../ssh-arcadelobby/docs/02-bridge-and-identity-protocol.md`). Changing
-anything under "Protocol v1" bumps the version and updates every game repo
+anything under the wire contract bumps the version and updates every game repo
 in the same change set.
 
 ## Goal
@@ -24,7 +24,7 @@ authenticates with **its own key** and forwards the player's identity as
 data. The game trusts that data **only** from connections authenticated by
 a configured proxy key.
 
-## Protocol v1
+## Keyed wire format (v1, unchanged in v2)
 
 ### Trust
 
@@ -60,9 +60,34 @@ a configured proxy key.
   session with a `\r\n` message (never fall back to treating the router's
   key as a player account).
 
+### Guest extension (v2)
+
+A trusted proxy may send `guest.<token>`, where `token` is exactly 32 lowercase
+hex characters generated from 16 cryptographically random bytes. The lobby mints
+a new token for each game visit; it is not an account, save slot, recoverable
+credential, or user-supplied SSH username. Guest identity fields are disjoint
+from keyed fingerprint/slot fields. Invalid or mixed identities fail closed.
+
+- Farm accepts this only with `FARM_ALLOW_GUESTS=true`; Moon Miner requires
+  `MOONMINER_ALLOW_GUESTS=true`. Both default false and require the existing
+  configured trusted proxy key on the wire. Direct connections still need a key.
+- Chess explicitly refuses guest assertions, including bot play.
+- The router **must omit `ARCADE_PLAYER_KEY`** for guests. Guest assertions with
+  that metadata, malformed tokens, or disabled support are rejected before any
+  account, save, or preferences operation. Untrusted keys cannot assert guests;
+  their usernames continue to select ordinary keyed slots.
+- Guest actors exist in memory for one visit. Autosave, shutdown flush, ranking,
+  preference writes and disconnect-recovery persistence never execute for guests.
+  Disconnect, game exit, idle expiry or process restart discards the visit.
+
+Public guest admission uses keyboard-interactive consent, gated by
+`ARCADE_ALLOW_GUESTS=false` by default. Public-key authentication stays enabled;
+SSH `none` is refused. Only completed authentication permissions select identity,
+never a key merely offered during authentication. The proxy key itself is unchanged.
+
 ### Environment (optional, auditing)
 
-After the session channel opens, the router sends one env request:
+For keyed players, after the session channel opens, the router sends one env request:
 
 - `ARCADE_PLAYER_KEY` — the player's public key, authorized_keys format.
 
@@ -157,3 +182,12 @@ absence as empty. Games must ignore it entirely on non-proxied connections.
   `docs/framework/01-ssh-server-and-identity.md`; idlefarmer: retrofit task
   to be filed in that repo).
 - Health probing → doc 03. Compose/networks/secrets → doc 04.
+
+## Error classification
+
+TCP failures and stalled SSH handshakes return `bridge.ErrDialFailed` and may
+mark a game offline. Host-key mismatches, authentication refusal, channel/PTY/
+shell rejection and policy errors return `ErrAccessRejected`; they do not change
+registry health. A nonzero game exit is shown as a closed session. Unexpected
+connection loss makes no promise that a final keyed save succeeded; guest copy
+always explains that progress was not saved.

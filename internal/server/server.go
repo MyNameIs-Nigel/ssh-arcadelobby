@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 
@@ -25,23 +26,23 @@ import (
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/config"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/presence"
 	"github.com/mynameis-nigel/ssh-arcadelobby/internal/registry"
-	"github.com/mynameis-nigel/ssh-arcadelobby/internal/store"
 )
 
 // Server wraps the Wish SSH server and related middleware.
 type Server struct {
-	cfg      config.Config
-	logger   *slog.Logger
-	ssh      *ssh.Server
-	registry *registry.Registry
-	banner   *banner.Source
-	store    *store.Store
-	proxyKey gossh.Signer
-	presence *presence.Tracker
+	cfg       config.Config
+	logger    *slog.Logger
+	ssh       *ssh.Server
+	registry  *registry.Registry
+	banner    *banner.Source
+	store     accountStore
+	authGuard *authGuard
+	proxyKey  gossh.Signer
+	presence  *presence.Tracker
 }
 
 // New constructs and configures the SSH server over the given registry.
-func New(cfg config.Config, logger *slog.Logger, reg *registry.Registry, ban *banner.Source, st *store.Store) (*Server, error) {
+func New(cfg config.Config, logger *slog.Logger, reg *registry.Registry, ban *banner.Source, st accountStore) (*Server, error) {
 	for _, p := range []string{cfg.HostKeyPath, cfg.ProxyKeyPath} {
 		if err := ensureKeyDir(p); err != nil {
 			return nil, err
@@ -53,7 +54,7 @@ func New(cfg config.Config, logger *slog.Logger, reg *registry.Registry, ban *ba
 		return nil, err
 	}
 
-	limits := NewSessionLimits(cfg.MaxConnections, cfg.MaxSessionsPerKey)
+	limits := NewSessionLimits(cfg.MaxConnections, cfg.MaxSessionsPerKey, cfg.MaxGuestSessions, cfg.MaxGuestSessionsPerIP)
 	rl := ratelimiter.NewRateLimiter(
 		rate.Limit(cfg.RateLimitPerSecond),
 		cfg.RateLimitBurst,
@@ -63,22 +64,49 @@ func New(cfg config.Config, logger *slog.Logger, reg *registry.Registry, ban *ba
 	srv := &Server{
 		cfg: cfg, logger: logger, registry: reg, banner: ban, store: st,
 		proxyKey: proxyKey, presence: presence.NewTracker(),
+		authGuard: newAuthGuard(cfg.MaxPendingAuth, cfg.MaxConnections+cfg.MaxPendingAuth, cfg.AuthTimeout),
 	}
+
+	srv.authGuard.maxGuests = cfg.MaxGuestSessions
+	srv.authGuard.maxGuestsPerIP = cfg.MaxGuestSessionsPerIP
 
 	// No idle timeout at the transport: the lobby enforces its own via the
 	// UI, and during a bridged game only the game's idle rules apply.
 	s, err := wish.NewServer(
 		wish.WithAddress(cfg.ListenAddr()),
 		wish.WithHostKeyPath(cfg.HostKeyPath),
-		wish.WithPublicKeyAuth(func(_ ssh.Context, key ssh.PublicKey) bool {
-			return key != nil
+		wish.WithPublicKeyAuth(publicKeyAuth),
+		ssh.WrapConn(func(ctx ssh.Context, c net.Conn) net.Conn {
+			guarded := srv.authGuard.wrap(c)
+			if guarded == nil {
+				return nil
+			}
+			ctx.SetValue(authConnContextKey{}, guarded)
+			return guarded
 		}),
-		// Middlewares run bottom-up: logging → rate limit → caps → PTY
-		// requirement → the lobby⇄bridge session loop. There is no shell.
+		func(s *ssh.Server) error {
+			s.ServerConfigCallback = func(ctx ssh.Context) *gossh.ServerConfig {
+				return &gossh.ServerConfig{AuthLogCallback: func(_ gossh.ConnMetadata, _ string, err error) {
+					if err == nil {
+						if c, ok := ctx.Value(authConnContextKey{}).(*guardedConn); ok {
+							c.authenticated()
+						}
+					}
+				}}
+			}
+			if cfg.AllowGuests {
+				s.KeyboardInteractiveHandler = guestAuth
+			}
+			return nil
+		},
+		// Middlewares run bottom-up: logging → rate limit → channel scope
+		// → authenticated identity → caps → PTY → lobby/bridge loop.
 		wish.WithMiddleware(
 			srv.sessionLoop(),
 			RequirePTY(),
 			limits.Middleware(),
+			resolveIdentity(cfg.AllowGuests),
+			scopeSession(),
 			ratelimiter.Middleware(rl),
 			logging.Middleware(),
 		),
@@ -111,10 +139,11 @@ func (s *Server) ListenAndServe() error {
 }
 
 // Shutdown stops accepting new connections and waits for existing ones.
-// Every bridged session dies with the router — games flush saves on
-// disconnect, so nothing is lost, but ship the router rarely.
+// Games attempt their normal keyed save on disconnect; guest visits are
+// discarded. A hard crash cannot guarantee that the latest state was saved.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Info("ssh server shutting down")
+	s.authGuard.closePending()
 	return s.ssh.Shutdown(ctx)
 }
 

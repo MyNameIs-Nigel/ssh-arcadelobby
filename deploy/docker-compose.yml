@@ -37,6 +37,12 @@ services:
     ports:
       - "22:2222" # host 22 -> container 2222 (non-root bind)
     environment:
+      # Enable only after both guest-capable game images have been deployed.
+      ARCADE_ALLOW_GUESTS: "false"
+      ARCADE_MAX_GUEST_SESSIONS: "32"
+      ARCADE_MAX_GUEST_SESSIONS_PER_IP: "4"
+      ARCADE_MAX_PENDING_AUTH: "64"
+      ARCADE_AUTH_TIMEOUT: "60s"
       ARCADE_LISTEN_PORT: "2222"
       ARCADE_HOST_KEY_PATH: /var/lib/arcade/ssh_host_key
       ARCADE_PROXY_KEY_PATH: /run/secrets/proxy_key
@@ -101,6 +107,7 @@ services:
     image: ghcr.io/mynameis-nigel/ssh-farm:latest
     # NO ports: — private network only; the router is the only way in.
     environment:
+      FARM_ALLOW_GUESTS: "false"
       FARM_LISTEN_PORT: "2222"
       FARM_HOST_KEY_PATH: /var/lib/farm/ssh_host_key
       FARM_DB_PATH: /var/lib/farm/farm.db
@@ -165,6 +172,7 @@ services:
   moonminer:
     image: ghcr.io/mynameis-nigel/ssh-moonminer:latest
     environment:
+      MOONMINER_ALLOW_GUESTS: "false"
       MOONMINER_LISTEN_PORT: "2222"
       MOONMINER_DB_PATH: /var/lib/moonminer/moonminer.db
       MOONMINER_HOST_KEY_PATH: /var/lib/moonminer/ssh_host_key

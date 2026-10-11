@@ -10,6 +10,7 @@
 
 [[games]]
 id      = "farm"
+allow_guests = true
 name    = "IDLE FARMER"
 tagline = "Crops grow while you're away."
 descriptors = ["idle", "prestige", "market", "leaderboard"]
@@ -24,6 +25,7 @@ order   = 10
 
 [[games]]
 id      = "moonminer"
+allow_guests = true
 name    = "MOON MINER"
 tagline = "Drill asteroids, dodge pirates."
 descriptors = ["extraction", "4 worlds", "push-your-luck"]
@@ -34,6 +36,7 @@ order   = 20
 
 [[games]]
 id      = "chess"
+allow_guests = false
 name    = "GAMBIT"
 tagline = "Bots or humans. Real clocks."
 descriptors = ["chess", "strategy", "multiplayer"]

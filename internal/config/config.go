@@ -10,24 +10,29 @@ import (
 
 // Config holds server settings loaded from ARCADE_* environment variables.
 type Config struct {
-	ListenHost          string
-	ListenPort          int
-	HostKeyPath         string
-	ProxyKeyPath        string
-	GamesPath           string
-	BannerPath          string
-	DBPath              string
-	StatsPath           string // "" = player-count snapshot disabled
-	StatsInterval       time.Duration
-	LobbyIdleTimeout    time.Duration
-	ProbeInterval       time.Duration
-	MaxConnections      int
-	MaxSessionsPerKey   int
-	RateLimitPerSecond  float64
-	RateLimitBurst      int
-	RateLimitMaxEntries int
-	LogLevel            string
-	LogFormat           string
+	AllowGuests           bool
+	MaxGuestSessions      int
+	MaxGuestSessionsPerIP int
+	MaxPendingAuth        int
+	AuthTimeout           time.Duration
+	ListenHost            string
+	ListenPort            int
+	HostKeyPath           string
+	ProxyKeyPath          string
+	GamesPath             string
+	BannerPath            string
+	DBPath                string
+	StatsPath             string // "" = player-count snapshot disabled
+	StatsInterval         time.Duration
+	LobbyIdleTimeout      time.Duration
+	ProbeInterval         time.Duration
+	MaxConnections        int
+	MaxSessionsPerKey     int
+	RateLimitPerSecond    float64
+	RateLimitBurst        int
+	RateLimitMaxEntries   int
+	LogLevel              string
+	LogFormat             string
 }
 
 // Load reads configuration from the environment with documented defaults.
@@ -44,6 +49,24 @@ func Load() (Config, error) {
 		DBPath:       envOr("ARCADE_DB_PATH", "var/arcade.db"),
 		LogLevel:     envOr("ARCADE_LOG_LEVEL", "info"),
 		LogFormat:    envOr("ARCADE_LOG_FORMAT", "text"),
+	}
+	if raw := os.Getenv("ARCADE_ALLOW_GUESTS"); raw != "" {
+		cfg.AllowGuests, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("ARCADE_ALLOW_GUESTS: %w", err)
+		}
+	}
+	if cfg.MaxGuestSessions, err = envIntOr("ARCADE_MAX_GUEST_SESSIONS", 32); err != nil {
+		return Config{}, err
+	}
+	if cfg.MaxGuestSessionsPerIP, err = envIntOr("ARCADE_MAX_GUEST_SESSIONS_PER_IP", 4); err != nil {
+		return Config{}, err
+	}
+	if cfg.MaxPendingAuth, err = envIntOr("ARCADE_MAX_PENDING_AUTH", 64); err != nil {
+		return Config{}, err
+	}
+	if cfg.AuthTimeout, err = envDurationOr("ARCADE_AUTH_TIMEOUT", 60*time.Second); err != nil {
+		return Config{}, err
 	}
 	// Live player-count snapshot (docs/07). Off unless set: production
 	// points it at the volume Caddy serves as api.ssharcade.dev.
@@ -75,6 +98,13 @@ func Load() (Config, error) {
 	}
 	if cfg.RateLimitMaxEntries, err = envIntOr("ARCADE_RATE_LIMIT_MAX_IPS", 1000); err != nil {
 		return Config{}, err
+	}
+
+	if cfg.MaxGuestSessions <= 0 || cfg.MaxGuestSessionsPerIP <= 0 || cfg.MaxPendingAuth <= 0 || cfg.AuthTimeout <= 0 {
+		return Config{}, fmt.Errorf("guest and authentication limits must be positive")
+	}
+	if cfg.AllowGuests && cfg.MaxGuestSessions >= cfg.MaxConnections {
+		return Config{}, fmt.Errorf("ARCADE_MAX_GUEST_SESSIONS must be below ARCADE_MAX_CONNECTIONS to reserve keyed capacity")
 	}
 
 	if cfg.ListenPort < 1 || cfg.ListenPort > 65535 {

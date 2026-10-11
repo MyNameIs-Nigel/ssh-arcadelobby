@@ -214,7 +214,17 @@ func (m Model) fillMenu(content []string, ox, oy int) {
 		if !g.Online {
 			descStyle = styleOffline
 		}
-		descLine := strings.Repeat(" ", rowIndent+4) + descStyle.Render(fit(desc, innerW-rowIndent-4))
+		descWidth := innerW - rowIndent - 4
+		policy := ""
+		if m.guest {
+			marker := "KEY REQUIRED"
+			if g.AllowGuests {
+				marker = "GUEST OK"
+			}
+			policy = styleGuest.Render(marker) + descStyle.Render(" · ")
+			descWidth -= lipgloss.Width(policy)
+		}
+		descLine := strings.Repeat(" ", rowIndent+4) + policy + descStyle.Render(fit(desc, descWidth))
 
 		row := origin + vi*2
 		if row+1 >= identityRow-1 {
@@ -233,12 +243,19 @@ func (m Model) fillMenu(content []string, ox, oy int) {
 	content[identityRow] = strings.Repeat(" ", rowIndent) +
 		styleIdentity.Render("Your key is your account. Same key, same saves, any game.")
 
+	if m.guest {
+		content[identityRow] = strings.Repeat(" ", rowIndent) + styleIdentity.Render("Guest progress won’t be saved. Leaving a game resets it.")
+		content[identityRow+1] = strings.Repeat(" ", rowIndent) + styleGuestCommand.Render("ssh-keygen -t ed25519")
+	}
 	if m.flash != "" {
 		f := styleFlash.Render(m.flash)
 		content[flashRow] = strings.Repeat(" ", max((innerW-lipgloss.Width(f))/2, 0)) + f
 	}
 
-	if m.fingerprint != "" {
+	if m.guest {
+		fp := styleGuest.Render("Guest Account")
+		content[fingerRow] = strings.Repeat(" ", max(innerW-lipgloss.Width(fp)-2, 0)) + fp
+	} else if m.fingerprint != "" {
 		fp := styleFinger.Render("key " + fit(m.fingerprint, 24))
 		content[fingerRow] = strings.Repeat(" ", max(innerW-lipgloss.Width(fp)-2, 0)) + fp
 	}
@@ -294,7 +311,25 @@ var aboutLines = []string{
 }
 
 func (m Model) fillAbout(content []string) {
-	for i, line := range aboutLines {
+	lines := aboutLines
+	if m.guest {
+		lines = []string{
+			"", "ABOUT SSHARCADE", "",
+			"Guest progress is temporary and resets when you leave a game.",
+			"Only games marked GUEST OK allow guests.", "",
+			"Generate a keypair in a local terminal:",
+			"  ssh-keygen -t ed25519",
+			"Reconnect with your key to start saving. Guest progress cannot",
+			"be transferred to an account.", "",
+			"Keep your private key; decline any overwrite prompt.",
+			"If needed, choose your key explicitly:",
+			"  ssh -i ~/.ssh/id_ed25519 " + hostLabel,
+			"Keep the same SSH username to reopen a saved slot.", "",
+			"Your private key stays on your machine.", "",
+			"PRESS ANY KEY TO RETURN",
+		}
+	}
+	for i, line := range lines {
 		if i >= len(content) {
 			break
 		}
@@ -355,6 +390,9 @@ func (m Model) alphaCheckboxLine() string {
 	box := "[ ]"
 	if m.alphaDontShow {
 		box = "[x]"
+	}
+	if m.guest {
+		return box + " Hide for this lobby connection"
 	}
 	return box + " Don't show this again for this game"
 }
