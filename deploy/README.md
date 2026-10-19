@@ -113,6 +113,7 @@ redirect instead of on the whole site.
 | Name | Type | Value |
 | --- | --- | --- |
 | `ssharcade.dev` | `A` | `<elastic IP>` |
+| `play.ssharcade.dev` | `A` | `<elastic IP>` — SSH alias; browsers redirect to the apex |
 | `www.ssharcade.dev` | `CNAME` | `cname.vercel-dns.com` |
 | `api.ssharcade.dev` | `A` | `<elastic IP>` — the player-count API; see "Live player-count API" below |
 
@@ -158,8 +159,15 @@ staging line in the `Caddyfile` first.
 ssh ssharcade.dev                       # the point of the exercise
 curl -sI http://ssharcade.dev  | head -1   # 308 -> https (Caddy's own redirect)
 curl -sI https://ssharcade.dev | head -2   # 301 -> https://www.ssharcade.dev
+curl -sI https://play.ssharcade.dev | head -2 # 301 -> https://ssharcade.dev
 docker compose logs web --tail 20       # "certificate obtained successfully"
 ```
+
+The `play.ssharcade.dev` alias needs its own Caddy site block even though it
+only redirects. DNS pointing at this host does not provision a certificate:
+HTTPS completes the TLS handshake before Caddy can return an HTTP redirect.
+If the apex works but `play` fails with a TLS error, check that the deployed
+Caddyfile contains the `play.ssharcade.dev` block, then validate and reload it.
 
 ### Operating it
 
