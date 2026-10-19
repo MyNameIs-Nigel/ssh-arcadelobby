@@ -54,6 +54,12 @@ ssharcade.dev {
 	redir https://www.ssharcade.dev{uri} permanent
 }
 
+# The SSH alias also receives browser traffic. It needs its own site block
+# so Caddy obtains a certificate before redirecting HTTPS visitors.
+play.ssharcade.dev {
+	redir https://ssharcade.dev{uri} permanent
+}
+
 # Live player-count API (docs/07-live-player-count.md). One static JSON file,
 # written every few seconds by the router into the shared `arcade-stats`
 # volume and served here read-only. This keeps the property the apex block
