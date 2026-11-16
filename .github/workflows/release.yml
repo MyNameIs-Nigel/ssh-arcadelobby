@@ -122,10 +122,8 @@ jobs:
           VERSION: ${{ needs.release.outputs.version }}
           SHA_TAG: ${{ steps.meta.outputs.sha_short }}
         run: |
-          docker buildx imagetools create --prefer-index=false \
-            --tag "$IMAGE_NAME:v$VERSION" --tag "$IMAGE_NAME:$SHA_TAG" --tag "$IMAGE_NAME:latest" \
-            "$IMAGE_NAME@$DIGEST"
           for tag in "v$VERSION" "$SHA_TAG" latest; do
+            docker buildx imagetools create --prefer-index=false --tag "$IMAGE_NAME:$tag" "$IMAGE_NAME@$DIGEST"
             manifest=$(docker buildx imagetools inspect "$IMAGE_NAME:$tag" --format '{{json .Manifest}}')
             test "$(jq -er .digest <<< "$manifest")" = "$DIGEST"
           done

@@ -4,8 +4,8 @@ Merging into `main` runs CI. Production changes only when a non-prerelease
 GitHub Release named `vMAJOR.MINOR.PATCH` is published. The tagged commit must
 be reachable from `main`. Each repository has its own independent release sequence.
 Do not move or reuse published tags; fix a release with a new patch version.
-Enable **Release immutability** in GitHub repository settings before the next
-release so GitHub enforces this for new releases. Use **Generate release notes**
+Keep **Release immutability** enabled in GitHub repository settings so GitHub
+locks new published release tags and assets. Use **Generate release notes**
 in the draft and add a sentence if there's anything players or operators should know.
 
 The tag is the only release version input. Docker passes its numeric portion
