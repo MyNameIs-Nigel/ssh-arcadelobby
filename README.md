@@ -5,6 +5,7 @@
 <p align="center">
   <a href="https://github.com/MyNameIs-Nigel/ssh-arcadelobby/actions/workflows/ci.yml"><img src="https://github.com/MyNameIs-Nigel/ssh-arcadelobby/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI on main"></a>
   <a href="https://github.com/MyNameIs-Nigel/ssh-arcadelobby/actions/workflows/release.yml"><img src="https://github.com/MyNameIs-Nigel/ssh-arcadelobby/actions/workflows/release.yml/badge.svg?event=release" alt="Release workflow"></a>
+  <a href="https://github.com/MyNameIs-Nigel/ssh-arcadelobby/actions/workflows/weekly-image-scan.yml"><img src="https://github.com/MyNameIs-Nigel/ssh-arcadelobby/actions/workflows/weekly-image-scan.yml/badge.svg?branch=main" alt="Weekly Image Scan"></a>
   <a href="https://github.com/MyNameIs-Nigel/ssh-arcadelobby/releases/latest"><img src="https://img.shields.io/github/v/release/MyNameIs-Nigel/ssh-arcadelobby?label=latest%20release" alt="Latest release"></a>
 </p>
 
