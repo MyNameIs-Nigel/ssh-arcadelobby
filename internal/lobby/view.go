@@ -95,7 +95,10 @@ func (m Model) topBorder() string {
 }
 
 func (m Model) bottomBorder() string {
-	keybar := "↑↓ SELECT · ENTER PLAY · R REFRESH · ? ABOUT · Q QUIT"
+	keybar := "↑↓ SELECT · ENTER/NUMBER PLAY · R REFRESH · ? ABOUT · Q QUIT"
+	if m.alphaOpen {
+		keybar = "SPACE TOGGLE · ENTER CONTINUE · ESC/Q BACK"
+	}
 	cursor := " "
 	if m.blink {
 		cursor = "█"
@@ -170,6 +173,10 @@ func (m Model) fillMenu(content []string, ox, oy int) {
 		idx := first + vi
 		selected := idx == m.cursor
 
+		rowLabel := strings.Repeat(" ", rowIndent)
+		if idx < len(gameShortcutKeys) {
+			rowLabel = styleKeybar.Render(fmt.Sprintf("%*c", rowIndent-1, gameShortcutKeys[idx])) + " "
+		}
 		cursor := "  "
 		if selected {
 			cursor = styleCursor.Render("▸ ")
@@ -195,7 +202,7 @@ func (m Model) fillMenu(content []string, ox, oy int) {
 			tagStyle = styleOffline
 		}
 		tagWidth := innerW - rowIndent - 2 - 2 - nameColWidth - 1
-		nameLine := strings.Repeat(" ", rowIndent) + cursor + dot + name + " " + tagStyle.Render(fit(tagline, tagWidth))
+		nameLine := rowLabel + cursor + dot + name + " " + tagStyle.Render(fit(tagline, tagWidth))
 
 		desc := strings.Join(g.Descriptors, " · ")
 		gameVersion := g.DetectedVersion
@@ -348,8 +355,6 @@ func (m Model) fillAlphaWarn(content []string, ox, oy int) {
 		m.alphaCheckboxLine(),
 		"",
 		"▸ CONTINUE TO GAME",
-		"",
-		"SPACE TOGGLE · ENTER CONTINUE · ESC BACK",
 	}
 	for i, line := range lines {
 		if i >= len(content) {
@@ -361,8 +366,6 @@ func (m Model) fillAlphaWarn(content []string, ox, oy int) {
 			style = styleAboutH
 		case strings.HasPrefix(line, "▸ CONTINUE"):
 			style = styleAlphaContinue
-		case strings.HasPrefix(line, "SPACE"):
-			style = styleAboutH
 		case line == m.alphaCheckboxLine():
 			style = styleAlphaCheck
 		}

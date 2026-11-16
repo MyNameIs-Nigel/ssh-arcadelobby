@@ -87,6 +87,8 @@ func (f *fixture) press(t *testing.T, key string) tea.Cmd {
 		msg = tea.KeyPressMsg{Code: tea.KeyDown}
 	case "enter":
 		msg = tea.KeyPressMsg{Code: tea.KeyEnter}
+	case "esc":
+		msg = tea.KeyPressMsg{Code: tea.KeyEscape}
 	case "space":
 		msg = tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
 	case "ctrl+c":
@@ -158,6 +160,21 @@ func TestSpaceActivatesToo(t *testing.T) {
 	f := newFixture(t, twoGames())
 	if cmd := f.press(t, "space"); !isQuit(cmd) {
 		t.Fatal("space did not activate")
+	}
+}
+
+func TestNumberKeysActivateGameSlots(t *testing.T) {
+	src := twoGames()
+	src.games[1].Online = true
+	f := newFixture(t, src)
+	if cmd := f.press(t, "9"); isQuit(cmd) || f.model.cursor != 0 || f.model.Result().Kind != KindNone {
+		t.Fatal("unassigned slot changed the selection or launched a game")
+	}
+	if cmd := f.press(t, "2"); !isQuit(cmd) {
+		t.Fatal("number did not activate the game")
+	}
+	if res := f.model.Result(); res.Kind != KindPlay || res.Game.ID != "farm" {
+		t.Fatalf("result = %+v, want to launch farm", res)
 	}
 }
 
@@ -395,12 +412,12 @@ func TestViewShowsMenu(t *testing.T) {
 	for _, want := range []string{
 		"SSHARCADE",
 		"ssharcade.dev",
-		"MOON MINER",
-		"IDLE FARMER",
+		"1 ▸ ● MOON MINER",
+		"2   ○ IDLE FARMER",
 		"Drill.",
 		"OFFLINE — back soon", // offline game's tagline is replaced
 		"Your key is your account",
-		"ENTER PLAY",
+		"ENTER/NUMBER PLAY",
 		"SHA256:testfingerprint",
 	} {
 		if !strings.Contains(view, want) {
@@ -497,7 +514,7 @@ func TestAlphaWarningBlocksUntilContinue(t *testing.T) {
 		{Game: registry.Game{ID: "moon", Name: "MOON MINER", Tagline: "Drill.", Version: "2.4.3", AlphaWarning: true}, Online: true},
 	}}
 	f := newFixture(t, src)
-	cmd := f.press(t, "enter")
+	cmd := f.press(t, "1")
 	if isQuit(cmd) {
 		t.Fatal("alpha game entered without warning")
 	}
@@ -505,7 +522,7 @@ func TestAlphaWarningBlocksUntilContinue(t *testing.T) {
 		t.Fatal("alpha overlay not opened")
 	}
 	view := renderPlain(f.model)
-	if !strings.Contains(view, "ALPHA SOFTWARE") || !strings.Contains(view, "Don't show this again") {
+	if !strings.Contains(view, "ALPHA SOFTWARE") || !strings.Contains(view, "Don't show this again") || !strings.Contains(view, "ESC/Q BACK") {
 		t.Fatalf("alpha overlay missing:\n%s", view)
 	}
 	cmd = f.press(t, "enter")
@@ -514,6 +531,30 @@ func TestAlphaWarningBlocksUntilContinue(t *testing.T) {
 	}
 	if f.model.Result().Game.ID != "moon" {
 		t.Fatalf("result = %+v", f.model.Result())
+	}
+}
+
+func TestAlphaWarningBackKeys(t *testing.T) {
+	for _, key := range []string{"q", "esc"} {
+		t.Run(key, func(t *testing.T) {
+			src := twoGames()
+			src.games[1].Online = true
+			src.games[1].AlphaWarning = true
+			f := newFixture(t, src)
+			prefs := &fakePrefs{}
+			f.model.prefs = prefs
+			f.press(t, "2")
+			f.press(t, "space")
+			if cmd := f.press(t, "1"); isQuit(cmd) || !f.model.alphaOpen {
+				t.Fatal("number shortcut bypassed the alpha warning")
+			}
+			if cmd := f.press(t, key); isQuit(cmd) || f.model.alphaOpen || f.model.Result().Kind != KindNone {
+				t.Fatal("back key did not return to the lobby")
+			}
+			if f.model.cursor != 1 || len(prefs.acks) != 0 {
+				t.Fatal("back changed selection or saved the alpha acknowledgement")
+			}
+		})
 	}
 }
 

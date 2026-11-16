@@ -4,6 +4,7 @@
 package lobby
 
 import (
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -55,6 +56,8 @@ const doubleClickWindow = 400 * time.Millisecond
 
 // flashDuration is how long a flash notice stays on screen.
 const flashDuration = 3 * time.Second
+
+const gameShortcutKeys = "123456789"
 
 type (
 	tickMsg time.Time
@@ -228,7 +231,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.alphaDontShow = !m.alphaDontShow
 		case "enter":
 			return m.confirmAlpha()
-		case "esc", "backspace":
+		case "q", "esc", "backspace":
 			m.alphaOpen = false
 		}
 		return m, nil
@@ -253,6 +256,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "q":
 		m.result = Result{Kind: KindQuit}
 		return m, tea.Quit
+	default:
+		if len(key) == 1 {
+			slot := strings.IndexByte(gameShortcutKeys, key[0])
+			if slot >= 0 && slot < len(m.games) {
+				m.cursor = slot
+				return m.activate()
+			}
+		}
 	}
 	return m, nil
 }

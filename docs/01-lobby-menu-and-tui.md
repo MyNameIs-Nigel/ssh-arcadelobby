@@ -82,15 +82,15 @@ for {
 ```
 ┌◇ SSHARCADE ─────────────────────────────────── ssharcade.dev ┐
 │                                                              │
-│   ▸ ● MOON MINER     Drill asteroids, dodge pirates.         │
-│       extraction · 4 worlds · push-your-luck                 │
-│     ● IDLE FARMER    Crops grow while you're away.           │
+│ 1 ▸ ● IDLE FARMER    Crops grow while you're away.           │
 │       idle · prestige · market                               │
-│     ○ ROGUE-9        OFFLINE — back soon                     │
+│ 2   ● MOON MINER     Drill asteroids, dodge pirates.         │
+│       extraction · 4 worlds · push-your-luck                 │
+│ 3   ○ GAMBIT         OFFLINE — back soon                     │
 │                                                              │
 │   Your key is your account. Same key, same saves, any game.  │
 │                                                              │
-└ ↑↓ SELECT · ENTER PLAY · R REFRESH · ? ABOUT · Q QUIT ──── █ ┘
+└ ↑↓ SELECT · ENTER/NUMBER PLAY · R REFRESH · ? ABOUT · Q QUIT ── █ ┘
 ```
 
 - One row per game from the registry (doc 03): status dot (`●` bright =
@@ -103,6 +103,9 @@ for {
   launches; single click selects; `R` forces a health re-probe; `?` shows
   an about overlay (what ssharcade is, how identity works, links); `Q` /
   `Ctrl+C` disconnects with a goodbye line.
+- `1`–`9` activate games by their numbered position in registry order, using
+  the same availability, guest access, and alpha-warning checks as Enter.
+  In the alpha warning, `Esc` or `Q` returns to the menu.
 - Status updates arrive as messages from the prober (doc 03) and re-render
   live while the menu is open.
 - A slim footer credit line may show the player's key fingerprint
