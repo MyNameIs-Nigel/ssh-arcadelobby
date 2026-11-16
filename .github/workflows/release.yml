@@ -12,6 +12,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  IMAGE_NAME: ghcr.io/mynameis-nigel/ssh-arcadelobby
+
 jobs:
   release:
     if: ${{ !github.event.release.prerelease }}
@@ -42,6 +45,8 @@ jobs:
   test:
     needs: release
     uses: ./.github/workflows/verify.yml
+    with:
+      release: true
 
   publish:
     outputs:
@@ -51,6 +56,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -73,20 +81,64 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
             VERSION=${{ needs.release.outputs.version }}
-          push: true
-          tags: |
-            ghcr.io/mynameis-nigel/ssh-arcadelobby:v${{ needs.release.outputs.version }}
-            ghcr.io/mynameis-nigel/ssh-arcadelobby:latest
-            ghcr.io/mynameis-nigel/ssh-arcadelobby:${{ steps.meta.outputs.sha_short }}
+          platforms: linux/amd64
+          sbom: true
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Smoke-test the candidate digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          docker pull --platform linux/amd64 "$IMAGE_NAME@$DIGEST"
+          scripts/ci/smoke-image.sh "$IMAGE_NAME@$DIGEST" "$VERSION"
+
+      - name: Scan the candidate digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker run --rm ghcr.io/aquasecurity/trivy@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb \
+            image --image-src remote --platform linux/amd64 --scanners vuln \
+            --severity HIGH,CRITICAL --format json "$IMAGE_NAME@$DIGEST" > "$RUNNER_TEMP/image-scan.json"
+          jq -r '.Results[]?.Vulnerabilities[]? |
+            [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.FixedVersion // "")] |
+            @tsv' "$RUNNER_TEMP/image-scan.json"
+          if ! jq -e 'all(.Results[]?.Vulnerabilities[]?; .Severity != "CRITICAL" or (.FixedVersion // "") == "")' \
+            "$RUNNER_TEMP/image-scan.json" >/dev/null; then
+            echo "::error::The candidate has a critical vulnerability with a fix available."
+            exit 1
+          fi
+
+      - name: Sign the build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Promote the approved digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          VERSION: ${{ needs.release.outputs.version }}
+          SHA_TAG: ${{ steps.meta.outputs.sha_short }}
+        run: |
+          docker buildx imagetools create --prefer-index=false \
+            --tag "$IMAGE_NAME:v$VERSION" --tag "$IMAGE_NAME:$SHA_TAG" --tag "$IMAGE_NAME:latest" \
+            "$IMAGE_NAME@$DIGEST"
+          for tag in "v$VERSION" "$SHA_TAG" latest; do
+            manifest=$(docker buildx imagetools inspect "$IMAGE_NAME:$tag" --format '{{json .Manifest}}')
+            test "$(jq -er .digest <<< "$manifest")" = "$DIGEST"
+          done
 
   deploy:
     needs: [release, publish]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     environment: production
     permissions:
       id-token: write
       contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -96,10 +148,19 @@ jobs:
         with:
           role-to-assume: ${{ vars.ARCADE_DEPLOY_ROLE }}
           aws-region: us-east-1
+      - name: Look up the last recorded production image
+        id: previous
+        run: |
+          previous=$(docker buildx imagetools inspect "$IMAGE_NAME:production" --format '{{json .Manifest}}' 2>/dev/null | jq -r .digest || true)
+          if [[ "$previous" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "image=$IMAGE_NAME@$previous" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy release through SSM
+        id: rollout
         env:
           INSTANCE_ID: ${{ vars.ARCADE_INSTANCE_ID }}
-          IMAGE: ghcr.io/mynameis-nigel/ssh-arcadelobby@${{ needs.publish.outputs.digest }}
+          IMAGE: ${{ env.IMAGE_NAME }}@${{ needs.publish.outputs.digest }}
           VERSION: ${{ needs.release.outputs.version }}
         run: |
           set -euo pipefail
@@ -123,6 +184,7 @@ jobs:
             --comment "deploy router $VERSION" \
             --parameters file://params.json \
             --query Command.CommandId --output text)
+          echo "command_id=$command_id" >> "$GITHUB_OUTPUT"
           # The standard waiter stops too early for a queued host deployment.
           for _ in $(seq 1 170); do
             status=$(aws ssm get-command-invocation --command-id "$command_id" \
@@ -136,10 +198,54 @@ jobs:
             --instance-id "$INSTANCE_ID" \
             --query '{Status:Status,Out:StandardOutputContent,Err:StandardErrorContent}' \
             --output json | tee result.json
-          {
-            echo "Release: v$VERSION"
-            echo "Image: $IMAGE"
-            echo "SSM command: $command_id"
-            echo "Status: $(jq -r .Status result.json)"
-          } >> "$GITHUB_STEP_SUMMARY"
           test "$(jq -r .Status result.json)" = Success
+
+      - name: Sign in to record the production image
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Record the deployed digest
+        id: record
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          docker buildx imagetools create --prefer-index=false --tag "$IMAGE_NAME:production" "$IMAGE_NAME@$DIGEST"
+          manifest=$(docker buildx imagetools inspect "$IMAGE_NAME:production" --format '{{json .Manifest}}')
+          test "$(jq -er .digest <<< "$manifest")" = "$DIGEST"
+
+      - name: Summarize the deployment attempt
+        if: ${{ always() }}
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          DIGEST: ${{ needs.publish.outputs.digest }}
+          PREVIOUS_IMAGE: ${{ steps.previous.outputs.image }}
+          COMMAND_ID: ${{ steps.rollout.outputs.command_id }}
+          ROLLOUT: ${{ steps.rollout.outcome }}
+          RECORD: ${{ steps.record.outcome }}
+        run: |
+          banner="Not verified"
+          recovery="See SSM output"
+          if [[ "$ROLLOUT" == success ]]; then
+            banner="SSH-2.0-$VERSION"
+            recovery="No rollback needed"
+          elif [[ -f result.json ]]; then
+            if jq -e '.Out | contains("Previous build restored.")' result.json >/dev/null; then
+              recovery="Previous build restored"
+            elif jq -e '.Err | contains("ROLLBACK FAILED")' result.json >/dev/null; then
+              recovery="Rollback failed"
+            fi
+          fi
+          {
+            echo "### Router rollout: v$VERSION"
+            echo
+            echo "- Source and fleet config revision: \`$GITHUB_SHA\`"
+            echo "- Candidate: \`$IMAGE_NAME@$DIGEST\`"
+            echo "- Last recorded production image: \`${PREVIOUS_IMAGE:-Unavailable}\`"
+            echo "- Observed router banner: \`$banner\`"
+            echo "- SSM command: \`${COMMAND_ID:-Not started}\`"
+            echo "- Rollout: $ROLLOUT"
+            echo "- Recovery: $recovery"
+            echo "- Production digest record: $RECORD"
+          } >> "$GITHUB_STEP_SUMMARY"
