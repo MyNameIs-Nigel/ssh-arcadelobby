@@ -1,0 +1,23 @@
+version: 2
+
+multi-ecosystem-groups:
+  weekly-dependencies:
+    schedule:
+      interval: weekly
+      day: monday
+
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    patterns: ["*"]
+    multi-ecosystem-group: weekly-dependencies
+
+  - package-ecosystem: github-actions
+    directory: /
+    patterns: ["*"]
+    multi-ecosystem-group: weekly-dependencies
+
+  - package-ecosystem: docker
+    directories: ["/", "/deploy"]
+    patterns: ["*"]
+    multi-ecosystem-group: weekly-dependencies
