@@ -1,27 +1,32 @@
 name: CI
 
-# No `pull_request:` trigger, deliberately. Once these repos are public that
-# trigger would run on every fork PR from anyone on the internet. Branches pushed
-# inside the repo still get full CI through `push` below — which covers every PR
-# opened from a branch here — so the only thing dropped is running unreviewed
-# fork code automatically. Review a fork PR, then run this by hand if you want a
-# signal on it.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  test:
+  verify:
+    uses: ./.github/workflows/verify.yml
+
+  gate:
+    name: CI gate
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    needs: verify
+    if: ${{ always() }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - run: python3 scripts/deploy/test_deploy.py
-      - run: go vet ./...
-      - run: go build ./...
-      - run: go test -race ./...
-      - name: Verify build-injected version
-        run: go test -tags releasecheck -ldflags="-X github.com/mynameis-nigel/ssh-arcadelobby/internal/version.Version=2.4.3" ./internal/version ./internal/server ./internal/lobby
+      - name: Require all verification jobs to pass
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+        run: test "$VERIFY_RESULT" = success

@@ -8,6 +8,7 @@
 # here degrades to a loud journal entry instead.
 set -uo pipefail
 
+# shellcheck source=/dev/null
 [ -r /etc/default/replication-check ] && . /etc/default/replication-check
 
 REGION="${AWS_REGION:-us-east-1}"

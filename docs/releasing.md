@@ -60,9 +60,20 @@ and the normal private configuration already installed.
 
 ## Validation
 
-Run `go build ./...`, `go vet ./...`, `go test -race ./...`, and
-`python3 scripts/deploy/test_deploy.py`. The deployment tests use a Docker
-substitute to cover digest selection, unrelated-service preservation, startup
-failure/rollback (including stopped services and first deployments), pull failure,
-old Compose rejection, and router config recovery.
-They do not deploy to AWS. Validate workflows with actionlint.
+Run `scripts/ci/verify.sh` with Go, Python 3.11+, actionlint, ShellCheck,
+and Docker with Compose and Linux amd64 build support. Set `PYTHON` if your
+`python3` is older. CI and Release share this gate, including the Windows
+SSH and PTY subset (`bash scripts/ci/verify.sh windows`).
+
+The deployment tests use a Docker substitute to exercise digest selection,
+service isolation, and rollback. The fleet checks validate Compose, the game
+registry, and Caddy before building an unpublished Linux image. No AWS
+credentials are needed for verification.
+
+### GitHub merge gate
+
+Before enabling PR CI on the default branch, review the fork-run approval
+setting under **Settings → Actions → General**. Select **Require approval for
+all external contributors** for maintainer approval of outside workflow runs.
+In a ruleset targeting `main`, require a pull request and the GitHub Actions
+check named **CI gate** after it has run successfully.
