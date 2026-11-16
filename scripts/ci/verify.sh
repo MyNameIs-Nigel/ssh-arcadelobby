@@ -9,8 +9,8 @@ case "${1:-}" in
     go test -count=1 -run '^Test(RejectsSessionWithoutPTY|MenuRendersGamesAndIdentity|LobbyBridgesToGameAndBack)$' ./internal/server
     exit
     ;;
-  '') ;;
-  *) echo "Usage: $0 [windows]" >&2; exit 2 ;;
+  ''|release) ;;
+  *) echo "Usage: $0 [windows|release]" >&2; exit 2 ;;
 esac
 
 python="${PYTHON:-python3}"
@@ -18,7 +18,7 @@ scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 
 actionlint
-shellcheck entrypoint.sh scripts/dev-local-fleet.sh scripts/ci/verify.sh scripts/deploy/remote-deploy.sh deploy/monitoring/*.sh
+shellcheck entrypoint.sh scripts/dev-local-fleet.sh scripts/ci/*.sh scripts/deploy/remote-deploy.sh deploy/monitoring/*.sh
 
 go vet ./...
 go build ./...
@@ -34,4 +34,7 @@ caddy_image=$("$python" scripts/ci/check-fleet.py "$scratch/compose.json" deploy
 docker run --rm --network none --entrypoint caddy \
   --mount "type=bind,src=$PWD/deploy/Caddyfile,dst=/etc/caddy/Caddyfile,readonly" \
   "$caddy_image" validate --adapter caddyfile --config /etc/caddy/Caddyfile
-docker build --platform linux/amd64 --quiet .
+if [[ ${1:-} != release ]]; then
+  image=$(docker build --platform linux/amd64 --quiet .)
+  scripts/ci/smoke-image.sh "$image" dev
+fi

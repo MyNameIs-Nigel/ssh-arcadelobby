@@ -4,7 +4,9 @@ Merging into `main` runs CI. Production changes only when a non-prerelease
 GitHub Release named `vMAJOR.MINOR.PATCH` is published. The tagged commit must
 be reachable from `main`. Each repository has its own independent release sequence.
 Do not move or reuse published tags; fix a release with a new patch version.
-Protect release tags against updates/deletion with a GitHub ruleset.
+Keep **Release immutability** enabled in GitHub repository settings so GitHub
+locks new published release tags and assets. Use **Generate release notes**
+in the draft and add a sentence if there's anything players or operators should know.
 
 The tag is the only release version input. Docker passes its numeric portion
 through Go linker flags to `internal/version.Version`. Local builds use `dev`.
@@ -30,11 +32,23 @@ settings are changed by this PR.
 4. Publish each game's release. Check the Release workflow's success, then
    verify the version in the lobby and game help screen.
 
-Publishing a tag alone does not deploy. Drafts and releases marked as prereleases
-do not deploy. Failed validation/tests prevent publishing and deployment.
-Published images get a `vX.Y.Z` tag, a commit tag, and `latest`; production uses
-the image digest returned by that build. A failed deployment can therefore
-leave a published release/image available without it being the running version.
+Publishing a tag alone does not deploy. Drafts and prereleases do not deploy.
+The release workflow builds one candidate image by digest. It boots the image
+with disposable keys and a fake game, checks the SSH banner, scans the image,
+and signs the build provenance. The scan reports high and critical findings
+and blocks promotion when a critical finding has a fix available.
+
+The same digest gets the `vX.Y.Z`, commit, and `latest` tags after those checks.
+`production` is updated only after SSM confirms the router is serving the
+expected version. Use `latest` for the newest approved image and `production`
+for the last deployment this workflow confirmed.
+
+```sh
+image=ghcr.io/mynameis-nigel/ssh-arcadelobby
+digest=$(docker buildx imagetools inspect "$image:production" --format '{{json .Manifest}}' | jq -er .digest)
+gh attestation verify "oci://$image@$digest" --repo MyNameIs-Nigel/ssh-arcadelobby
+docker buildx imagetools inspect "$image@$digest" --format '{{json .SBOM}}'
+```
 
 ## Deployment and recovery
 
@@ -48,6 +62,10 @@ operator-owned. Compose defaults to `latest` only for services not yet migrated.
 The script verifies the running SSH banner against the release version and
 restores the previous image/configuration on failure. Its exit status remains
 nonzero after rollback so a recovered deployment is still reported as failed.
+The Actions summary has the config revision, previous recorded image, candidate
+digest, banner verification, and rollback outcome when SSM reports one. If
+SSM succeeds but the `production` tag update fails, the summary shows both
+outcomes. Confirm the running digest before repairing the tag.
 This is an application/configuration rollback, not a database rollback: releases
 with incompatible data migrations require a separate recovery plan.
 
@@ -57,6 +75,15 @@ numeric `VERSION`. Router rollback also requires `COMPOSE_B64`, `GAMES_B64`,
 and `CADDY_B64` from the previous release. Use the release's recorded digest;
 do not rebuild an old tag or move it. The host must have `flock`, Docker Compose,
 and the normal private configuration already installed.
+After confirming a manual rollback, point the registry record at the restored
+image so it matches what is serving players:
+
+```sh
+docker buildx imagetools create --prefer-index=false --tag "$image:production" "$image@$digest"
+```
+
+Use the confirmed rollback digest in that command and authenticate to GHCR
+with package write access.
 
 ## Validation
 
@@ -67,8 +94,8 @@ SSH and PTY subset (`bash scripts/ci/verify.sh windows`).
 
 The deployment tests use a Docker substitute to exercise digest selection,
 service isolation, and rollback. The fleet checks validate Compose, the game
-registry, and Caddy before building an unpublished Linux image. No AWS
-credentials are needed for verification.
+registry, and Caddy before building and smoke-testing an unpublished Linux
+image. No AWS credentials are needed for verification.
 
 ### GitHub merge gate
 
