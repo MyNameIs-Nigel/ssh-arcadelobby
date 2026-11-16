@@ -85,6 +85,23 @@ docker buildx imagetools create --prefer-index=false --tag "$image:production" "
 Use the confirmed rollback digest in that command and authenticate to GHCR
 with package write access.
 
+## Weekly scan
+
+**Weekly Image Scan** runs Monday mornings. Use **Run workflow** in Actions
+to check again on demand. It resolves `production` and `latest` once and scans
+each distinct digest. The run summary distinguishes findings from scan errors,
+and the report artifact keeps the Trivy JSON by digest for 35 days.
+
+The image job uses the same policy as Release. A fixable critical finding
+fails the job. High findings and critical findings with no fix are still
+reported. A separate Govulncheck job reports reachable advisories in the
+current Go source.
+
+If the deployed Caddy digest is recorded, put its exact
+`caddy@sha256:<digest>` reference in the repository variable
+`ARCADE_CADDY_PRODUCTION_IMAGE` and update it when the deployed Caddy image
+changes.
+
 ## Validation
 
 Run `scripts/ci/verify.sh` with Go, Python 3.11+, actionlint, ShellCheck,

@@ -97,17 +97,7 @@ jobs:
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
-          docker run --rm ghcr.io/aquasecurity/trivy@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb \
-            image --image-src remote --platform linux/amd64 --scanners vuln \
-            --severity HIGH,CRITICAL --format json "$IMAGE_NAME@$DIGEST" > "$RUNNER_TEMP/image-scan.json"
-          jq -r '.Results[]?.Vulnerabilities[]? |
-            [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.FixedVersion // "")] |
-            @tsv' "$RUNNER_TEMP/image-scan.json"
-          if ! jq -e 'all(.Results[]?.Vulnerabilities[]?; .Severity != "CRITICAL" or (.FixedVersion // "") == "")' \
-            "$RUNNER_TEMP/image-scan.json" >/dev/null; then
-            echo "::error::The candidate has a critical vulnerability with a fix available."
-            exit 1
-          fi
+          scripts/ci/scan-image.sh "$IMAGE_NAME@$DIGEST" "$RUNNER_TEMP/image-scan.json"
 
       - name: Sign the build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
