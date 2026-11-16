@@ -9,7 +9,7 @@ import (
 )
 
 func TestGuestPolicyAllInputPaths(t *testing.T) {
-	for _, input := range []string{"enter", "space", "click", "double-click"} {
+	for _, input := range []string{"enter", "space", "1", "click", "double-click"} {
 		t.Run(input, func(t *testing.T) {
 			src := twoGames()
 			src.games[0].AlphaWarning = true
