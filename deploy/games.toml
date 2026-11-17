@@ -57,6 +57,7 @@ order   = 30
 
 [[games]]
 id      = "bulletin"
+alpha_warning = true
 allow_guests = false # the bulletin refuses guest.<token> fail-closed anyway
 name    = "BULLETIN"
 tagline = "Post under your key."
