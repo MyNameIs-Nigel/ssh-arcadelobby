@@ -282,6 +282,38 @@ services:
   # router writes into the shared arcade-stats volume (docs/07). That volume
   # is the only thing it shares with the arcade; it still has no network
   # route to any of it.
+  # Listed before its first deployment. The router release starts router and web.
+  bulletin:
+    image: ${BULLETIN_IMAGE:-ghcr.io/mynameis-nigel/ssh-bulletin:latest}
+    environment:
+      BULLETIN_LISTEN_PORT: "2222"
+      BULLETIN_HOST_KEY_PATH: /var/lib/bulletin/ssh_host_key
+      BULLETIN_DB_PATH: /var/lib/bulletin/bulletin.db
+      # Every connection arrives from the router's one IP; the router does the
+      # public throttling. The default (2/s) would rate-limit the whole arcade.
+      BULLETIN_RATE_LIMIT_PER_SECOND: "50"
+      BULLETIN_PROXY_KEYS_PATH: /etc/bulletin/proxy_keys
+      LITESTREAM_REPLICA_URL: s3://ssharcade-snoigel-data/bulletin/db
+      BULLETIN_REQUIRE_REPLICATION: "true"
+      LITESTREAM_S3_REGION: us-east-1
+      BULLETIN_HOST_KEY_SOURCE: /etc/bulletin/hostkey/ssh_host_key
+    volumes:
+      - bulletin-data:/var/lib/bulletin
+      - ./private/keys/bulletin:/etc/bulletin/hostkey:ro
+      - ./proxy_keys:/etc/bulletin/proxy_keys:ro # PUBLIC half of the router's proxy key
+    networks: [ssharcade]
+    restart: unless-stopped
+    stop_grace_period: 45s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 1.0
+
   web:
     # Major-version tag, not a floating :latest and not a pinned minor.
     # This is the one image in the file we don't build, so a surprise major
@@ -348,6 +380,7 @@ volumes:
   farm-data: {}
   moonminer-data: {}
   chess-data: {}
+  bulletin-data: {}
   caddy-data: {}
   caddy-config: {}
   # The live player-count snapshot, shared router(rw) → web(ro). tmpfs, not
