@@ -578,3 +578,21 @@ func TestRouterBannerAdvertisesBuildVersion(t *testing.T) {
 		t.Fatalf("banner = %q, want %q", got, want)
 	}
 }
+
+func TestGenericSSHSessionDoesNotSendModeProbes(t *testing.T) {
+	_, _, addr := testArcade(t, map[string]string{"alpha": "127.0.0.1:1"}, nil)
+	p := dialPlayer(t, addr, "alice", testSigner(t))
+	waitContains(t, p, "ALPHA GAME")
+	if _, err := io.WriteString(p.stdin, "q"); err != nil {
+		t.Fatal(err)
+	}
+	waitContains(t, p, "Thanks for playing")
+	if err := p.sess.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	for _, probe := range []string{"\x1b[?2026$p", "\x1b[?2027$p"} {
+		if strings.Contains(p.out.String(), probe) {
+			t.Errorf("SSH output contains probe %q", probe)
+		}
+	}
+}

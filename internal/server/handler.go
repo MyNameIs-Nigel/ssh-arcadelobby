@@ -187,7 +187,7 @@ func (srv *Server) runLobby(s ssh.Session, pump *inputPump, wp *winchPump, id id
 	model := lobby.New(srv.registry, srv.banner, poke, bannerPoke, id.Fingerprint, prefs,
 		pty.Window.Width, pty.Window.Height, srv.cfg.LobbyIdleTimeout, opts...)
 
-	envs := append(s.Environ(), "TERM="+pty.Term)
+	envs := teaSessionEnvironment(s.Environ(), pty.Term)
 	progOpts := []tea.ProgramOption{
 		tea.WithInput(pr),
 		tea.WithOutput(s),
