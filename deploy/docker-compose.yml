@@ -9,23 +9,7 @@
 #                     polished, but stable enough to go live) with its own
 #                     ci.yml/release.yml + Dockerfile on the same
 #                     Litestream/S3 durability pattern as farm's.
-#   chess (GAMBIT) — service block and chess-data volume are here as of
-#                     ssh-chess's phase2/06. It is the fleet's first
-#                     multiplayer-capable game, though Phase 2 ships
-#                     bot play only (the lobby's MULTIPLAYER item is
-#                     visible and locked until Phase 3).
-#                     Two things differ from its siblings, both on purpose:
-#                     mem_limit is 512m rather than 256m because it runs up
-#                     to four Stockfish processes, and its image is larger
-#                     (~270 MB) because Stockfish embeds its NNUE net — an
-#                     external net file cannot be read from a read-only
-#                     rootfs.
-#                     ORDERING: this service cannot start until the image
-#                     exists at ghcr.io/mynameis-nigel/ssh-chess, which
-#                     happens the first time ssh-chess's `main` runs its
-#                     release.yml. Until then chess pulls nothing and the
-#                     menu shows `○ GAMBIT OFFLINE`, which is the designed
-#                     behaviour for an entry with no container, not a fault.
+#   chess is paused at zero replicas. Its registry entry stays visible.
 #
 # Idle Farmer v1 (`idlefarmer`) was removed at the v2 cutover: its repo is
 # retired and its registry entry went with commit d72d578. ssh-farm is v2 and
@@ -209,6 +193,7 @@ services:
     cpus: 1.0
 
   chess:
+    scale: 0
     image: ${CHESS_IMAGE:-ghcr.io/mynameis-nigel/ssh-chess:latest}
     # NO ports: — private network only; the router is the only way in.
     environment:

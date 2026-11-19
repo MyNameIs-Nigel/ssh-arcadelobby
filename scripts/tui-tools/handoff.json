@@ -1,0 +1,8 @@
+{
+  "cols": 100, "rows": 32,
+  "steps": [
+    {"expect": "IDLE FARMER"},
+    {"send": "1", "expect": "ssh-farm"},
+    {"send": "\u0003", "expect": "SSHARCADE"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "cols": 110,
+  "rows": 36,
+  "steps": [
+    {
+      "expect": "SSHARCADE"
+    },
+    {
+      "send": "?",
+      "expect": "Terminal RTT: [0-9]+ ms"
+    },
+    {
+      "wait_ms": 300
+    }
+  ]
+}

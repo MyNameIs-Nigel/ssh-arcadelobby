@@ -332,6 +332,9 @@ func (m Model) fillAbout(content []string) {
 		}
 	}
 	for i, line := range lines {
+		if i == len(lines)-2 {
+			line = m.rtt.String()
+		}
 		if i >= len(content) {
 			break
 		}
