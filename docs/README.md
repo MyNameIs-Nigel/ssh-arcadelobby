@@ -109,3 +109,5 @@ workarounds, `go vet`/`go test` before done. Router-specific additions:
    follows the durability pattern in doc 06 — a game or router change that
    would put persistent state outside its SQLite file (or the `keys/`
    prefix) is wrong by definition.
+
+[Capture development SSH screens and test terminal behavior](../scripts/tui-tools/README.md)

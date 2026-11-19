@@ -66,6 +66,7 @@ type (
 
 // Model is the arcade menu.
 type Model struct {
+	rtt         terminalRTT
 	src         Source
 	bannerSrc   BannerReader
 	poke        <-chan struct{}
@@ -179,6 +180,16 @@ func pokeCmd(ch <-chan struct{}) tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.updateScreen(msg)
+	m = next.(Model)
+	probe := m.rtt.observe(m.aboutOpen, msg, time.Now())
+	if probe != nil {
+		cmd = tea.Batch(cmd, probe)
+	}
+	return m, cmd
+}
+
+func (m Model) updateScreen(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
