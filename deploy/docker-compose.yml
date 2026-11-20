@@ -274,6 +274,8 @@ services:
       BULLETIN_LISTEN_PORT: "2222"
       BULLETIN_HOST_KEY_PATH: /var/lib/bulletin/ssh_host_key
       BULLETIN_DB_PATH: /var/lib/bulletin/bulletin.db
+      # Set the intended owner's public key fingerprint in the fleet .env.
+      BULLETIN_OWNER_FINGERPRINT: "${BULLETIN_OWNER_FINGERPRINT:-}"
       # Every connection arrives from the router's one IP; the router does the
       # public throttling. The default (2/s) would rate-limit the whole arcade.
       BULLETIN_RATE_LIMIT_PER_SECOND: "50"
