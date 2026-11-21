@@ -1,0 +1,11 @@
+# Default owner for everything. Combined with branch protection's
+# "require review from code owners", nothing merges to main unreviewed.
+*                           @MyNameIs-Nigel
+
+# Called out so they are never reviewed as ordinary diffs: the things that
+# can ship a mistake to production, fast.
+/.github/workflows/         @MyNameIs-Nigel
+/scripts/                   @MyNameIs-Nigel
+/Dockerfile                 @MyNameIs-Nigel
+/entrypoint.sh              @MyNameIs-Nigel
+/etc/litestream.yml         @MyNameIs-Nigel

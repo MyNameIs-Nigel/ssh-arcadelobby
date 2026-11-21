@@ -1,6 +1,6 @@
 <h1 align="center">SSH Arcade Lobby</h1>
 
-<p align="center">Three terminal games behind one SSH address, shipped to a single EC2 host.</p>
+<p align="center">A fleet of terminal games behind one SSH address, shipped to a single EC2 host.</p>
 
 <p align="center">
   <a href="https://github.com/MyNameIs-Nigel/ssh-arcadelobby/actions/workflows/ci.yml"><img src="https://github.com/MyNameIs-Nigel/ssh-arcadelobby/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI on main"></a>
@@ -21,7 +21,8 @@ ssh ssharcade.dev
   <a href="https://www.ssharcade.dev">Website</a> ·
   <a href="https://github.com/MyNameIs-Nigel/ssh-farm">Idle Farmer</a> ·
   <a href="https://github.com/MyNameIs-Nigel/ssh-moonminer">Moon Miner</a> ·
-  <a href="https://github.com/MyNameIs-Nigel/ssh-chess">GAMBIT</a>
+  <a href="https://github.com/MyNameIs-Nigel/ssh-chess">GAMBIT</a> ·
+  <a href="https://github.com/MyNameIs-Nigel/ssh-bulletin">Bulletin</a>
 </p>
 
 ## From GitHub to EC2

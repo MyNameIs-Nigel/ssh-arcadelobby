@@ -1,0 +1,29 @@
+# Keep the build context to what the build actually compiles.
+#
+# The important entries are the runtime-state ones. var/ holds SSH host keys
+# and the SQLite database in local development, and `COPY . .` in the build
+# stage would otherwise pull them into a build layer. They never reach the
+# published image (only the built binaries are copied forward), but a host key
+# has no business being in a build context at all.
+var/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+ssh_host_key
+ssh_host_key.pub
+proxy_key
+proxy_key.pub
+deploy/proxy_keys
+deploy/secrets/
+bin/
+
+.git/
+.github/
+.claude/
+
+docs/
+README.md
+
+Dockerfile
+.dockerignore
