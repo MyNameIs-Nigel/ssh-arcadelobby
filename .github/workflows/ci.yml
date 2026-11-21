@@ -18,15 +18,61 @@ jobs:
   verify:
     uses: ./.github/workflows/verify.yml
 
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The repo has a backlog of 14 findings under the shared config. The lint
+    # job is a ratchet: on a pull request it fails only on issues the change
+    # introduces; on main it reports without failing.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@d583c34f0599d37dbac4a198b9c83201be380893 # v9.3.0
+        with:
+          version: v2.15.0
+          only-new-issues: true
+        continue-on-error: ${{ github.event_name != 'pull_request' }}
+
+  supply-chain:
+    name: Supply chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: govulncheck
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          "$RUNNER_TEMP/bin/govulncheck" ./...
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
   gate:
     name: CI gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
-    needs: verify
+    needs: [verify, lint, supply-chain]
     if: ${{ always() }}
     steps:
       - name: Require all verification jobs to pass
         env:
-          VERIFY_RESULT: ${{ needs.verify.result }}
-        run: test "$VERIFY_RESULT" = success
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            test "$result" = success
+          done

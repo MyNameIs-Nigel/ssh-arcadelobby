@@ -20,6 +20,14 @@ trap 'rm -rf "$scratch"' EXIT
 actionlint
 shellcheck entrypoint.sh scripts/dev-local-fleet.sh scripts/ci/*.sh scripts/deploy/remote-deploy.sh deploy/monitoring/*.sh
 
+unformatted=$(gofmt -l .)
+if [[ -n $unformatted ]]; then
+  echo "gofmt needed on:" >&2
+  printf '  %s\n' "$unformatted" >&2
+  exit 1
+fi
+go mod tidy -diff
+go mod verify
 go vet ./...
 go build ./...
 go test -race -count=1 -coverprofile="$scratch/coverage.out" ./...

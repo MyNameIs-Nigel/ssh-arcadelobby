@@ -14,13 +14,13 @@ func TestHitboxAt(t *testing.T) {
 	}{
 		{1, 2, "a", true},
 		{10, 3, "a", true},
-		{0, 2, "", false},   // left of a
-		{11, 2, "", false},  // right edge exclusive
-		{1, 4, "", false},   // below a
-		{5, 3, "b", true},   // overlap: topmost (last-registered) wins
+		{0, 2, "", false},  // left of a
+		{11, 2, "", false}, // right edge exclusive
+		{1, 4, "", false},  // below a
+		{5, 3, "b", true},  // overlap: topmost (last-registered) wins
 		{8, 3, "b", true},
-		{9, 3, "a", true},   // past b's right edge, still inside a
-		{5, 2, "a", true},   // b only covers row 3
+		{9, 3, "a", true}, // past b's right edge, still inside a
+		{5, 2, "a", true}, // b only covers row 3
 	}
 	for _, tc := range cases {
 		box, ok := h.At(tc.x, tc.y)

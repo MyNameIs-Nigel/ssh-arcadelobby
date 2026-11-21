@@ -1,0 +1,73 @@
+# golangci-lint configuration for ssh-arcadelobby.
+#
+# Shared across the ssharcade fleet; ssh-farm's config is the source. Every
+# linter here must be one a reviewer would have flagged by hand. A lint gate
+# that fires on style opinions trains people to ignore it. Anything noisy
+# lives in `exclusions` below with a reason, not in a blanket `//nolint`.
+#
+# CI runs this as a ratchet (only-new-issues): new and changed code must be
+# clean, while the existing backlog stays visible without blocking.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  # `standard` = errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - bodyclose      # leaked HTTP bodies
+    - copyloopvar    # loop-variable capture
+    - durationcheck  # time.Duration multiplication bugs
+    - errorlint      # %w / errors.Is correctness
+    - gocritic       # broad correctness + performance diagnostics
+    - misspell       # typos in player-visible strings
+    - nilerr         # `return nil` after a non-nil error
+    - noctx          # requests without a context
+    - rowserrcheck   # sql.Rows.Err() forgotten — we hand-roll SQLite queries
+    - sqlclosecheck  # unclosed sql.Rows/Stmt — same reason
+    - unconvert      # redundant conversions
+    - usetesting     # t.Setenv / t.Context over the manual equivalents
+    - wastedassign
+
+  settings:
+    errcheck:
+      # Deferred Close on a read-only handle and the Fprint family into a
+      # strings.Builder cannot meaningfully fail; checking them adds noise.
+      exclude-functions:
+        - (*strings.Builder).WriteString
+        - (*strings.Builder).WriteRune
+        - (*strings.Builder).WriteByte
+    # `shadow` is deliberately NOT enabled: `if err := f(); err != nil` inside
+    # a function that already has an `err` is idiomatic Go, and this codebase
+    # uses it everywhere. A linter that fires on the house style is a linter
+    # people learn to ignore.
+    gocritic:
+      disabled-checks:
+        - ifElseChain   # the TUI's colour/state ladders read better as-is
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Tests may shadow and may ignore errors on setup helpers; the value of
+      # these linters is in production paths.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gocritic
+          - noctx     # test fixtures open SQLite/net handles without a ctx by design
+          - unparam
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/mynameis-nigel/ssh-arcadelobby
