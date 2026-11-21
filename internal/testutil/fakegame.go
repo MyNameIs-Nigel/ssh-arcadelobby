@@ -175,10 +175,10 @@ func (f *FakeGame) handleConn(conn net.Conn, cfg *gossh.ServerConfig) {
 }
 
 type ptyReqPayload struct {
-	Term          string
-	Width, Height uint32
+	Term           string
+	Width, Height  uint32
 	PixelW, PixelH uint32
-	Modes         string
+	Modes          string
 }
 
 type envReqPayload struct{ Name, Value string }

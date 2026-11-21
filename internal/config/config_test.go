@@ -44,14 +44,14 @@ func TestDefaults(t *testing.T) {
 
 func TestInvalidValues(t *testing.T) {
 	cases := map[string]string{
-		"ARCADE_LISTEN_PORT":          "70000",
-		"ARCADE_MAX_CONNECTIONS":      "0",
-		"ARCADE_MAX_SESSIONS_PER_KEY": "0",
+		"ARCADE_LISTEN_PORT":           "70000",
+		"ARCADE_MAX_CONNECTIONS":       "0",
+		"ARCADE_MAX_SESSIONS_PER_KEY":  "0",
 		"ARCADE_RATE_LIMIT_PER_SECOND": "-1",
-		"ARCADE_RATE_LIMIT_BURST":     "0",
-		"ARCADE_PROBE_INTERVAL":       "10ms",
-		"ARCADE_LOBBY_IDLE_TIMEOUT":   "-5m",
-		"ARCADE_STATS_INTERVAL":       "500ms",
+		"ARCADE_RATE_LIMIT_BURST":      "0",
+		"ARCADE_PROBE_INTERVAL":        "10ms",
+		"ARCADE_LOBBY_IDLE_TIMEOUT":    "-5m",
+		"ARCADE_STATS_INTERVAL":        "500ms",
 	}
 	for key, val := range cases {
 		t.Run(key, func(t *testing.T) {
